@@ -27,6 +27,9 @@ Desktop.ini
 # Data files (large, generated)
 *.npz
 
+# Scaffolding snapshots
+*.7z
+
 # Logs
 *.log
 

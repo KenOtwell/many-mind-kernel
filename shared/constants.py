@@ -56,8 +56,10 @@ TURN_TRIGGER_TYPES: frozenset[str] = frozenset({"inputtext", "inputtext_s"})
 # just_say : Direct output passthrough — queue data text directly for SKSE.
 FALCON_LOCAL_TYPES: frozenset[str] = frozenset({"request", "chatnf", "just_say"})
 
-# Session lifecycle events (carry session semantics; forwarded to Progeny in tick).
-# init / wipe also trigger an NPC registry clear on Falcon.
+# Session lifecycle events — handled locally by Falcon (NOT forwarded to Progeny).
+# init / wipe / playerdied clear Falcon's NPC registry; others log and return empty.
+# Session semantics (rollback, diary, Dragon Break) will be Progeny's job when
+# forwarding is implemented.
 SESSION_TYPES: frozenset[str] = frozenset({
     "init", "wipe", "playerdied", "goodnight", "waitstart", "waitstop",
 })
