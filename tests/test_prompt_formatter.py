@@ -73,9 +73,9 @@ class TestDataPayload:
         # User message contains JSON payload followed by instruction text
         json_part = messages[1]["content"].split("\n\n")[0]
         data = json.loads(json_part)
-        assert "world_state" in data
         assert "agents" in data
         assert "player_input" in data
+        assert "present_npcs" in data
 
     def test_player_input_included(self):
         ctx = _make_context("Tell me about dragons")
@@ -147,27 +147,40 @@ class TestAgentBlocks:
         assert data["agents"][0]["ticks_since_last_action"] == 5
 
 
-class TestWorldState:
-    def test_location_from_world_events(self):
-        ctx = _make_context()
-        ctx.world_events = [
-            TypedEvent(
-                event_type="location",
-                local_ts="2024-01-01",
-                game_ts=100.0,
-                raw_data="Dragonsreach",
-            ),
-        ]
-        roster = _make_roster(["Lydia"])
-        messages = build_prompt(ctx, roster)
-        json_part = messages[1]["content"].split("\n\n")[0]
-        data = json.loads(json_part)
-        assert data["world_state"]["location"] == "Dragonsreach"
+class TestFactPoolIntegration:
+    def test_known_world_in_agent_block_when_fact_pool_provided(self):
+        from progeny.src.fact_pool import FactPool
+        pool = FactPool()
+        pool.add_fact("Dragon attacked", "event", 100.0, ["Player", "Lydia"])
 
-    def test_default_location_when_none(self):
         ctx = _make_context()
         roster = _make_roster(["Lydia"])
-        messages = build_prompt(ctx, roster)
+        messages = build_prompt(ctx, roster, fact_pool=pool)
         json_part = messages[1]["content"].split("\n\n")[0]
         data = json.loads(json_part)
-        assert data["world_state"]["location"] == "Unknown"
+        agent = data["agents"][0]
+        assert "known_world" in agent
+        assert len(agent["known_world"]) == 1
+        assert agent["known_world"][0]["content"] == "Dragon attacked"
+
+    def test_no_fact_pool_still_works(self):
+        ctx = _make_context()
+        roster = _make_roster(["Lydia"])
+        messages = build_prompt(ctx, roster)  # no fact_pool
+        json_part = messages[1]["content"].split("\n\n")[0]
+        data = json.loads(json_part)
+        assert data["agents"][0]["known_world"] == []
+
+    def test_lore_context_included(self):
+        from progeny.src.fact_pool import FactPool
+        pool = FactPool()
+        pool.bit_index.get_or_assign("Lydia")
+        pool.add_lore("Skyrim is the homeland of the Nords")
+
+        ctx = _make_context()
+        roster = _make_roster(["Lydia"])
+        messages = build_prompt(ctx, roster, fact_pool=pool)
+        json_part = messages[1]["content"].split("\n\n")[0]
+        data = json.loads(json_part)
+        assert "lore_context" in data
+        assert "Skyrim" in data["lore_context"][0]

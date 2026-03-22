@@ -12,14 +12,21 @@ import progeny.src.qdrant_client as client_mod
 from progeny.src.qdrant_client import (
     _agent_state_point_id,
     ensure_collections,
+    get_points_by_ids,
     read_agent_state,
+    scroll_filtered,
     search_memories,
+    search_vector,
+    set_point_payload,
     write_agent_state,
     write_memory,
 )
 from shared.constants import (
     COLLECTION_AGENT_STATE,
+    COLLECTION_LORE,
     COLLECTION_NPC_MEMORIES,
+    COLLECTION_SESSION_CONTEXT,
+    COLLECTION_WORLD_EVENTS,
     EMOTIONAL_DIM,
     SEMANTIC_DIM,
 )
@@ -338,3 +345,121 @@ class TestSearchMemories:
         result = await search_memories(_emo_vec(), _sem_vec())
         assert result == []
         client_mod.configure(None)
+
+
+# ---------------------------------------------------------------------------
+# ensure_collections — extended (world_events, session_context, lore)
+# ---------------------------------------------------------------------------
+
+class TestEnsureCollectionsExtended:
+    async def test_creates_world_events(self, qdrant):
+        names = {c.name for c in (await qdrant.get_collections()).collections}
+        assert COLLECTION_WORLD_EVENTS in names
+
+    async def test_creates_session_context(self, qdrant):
+        names = {c.name for c in (await qdrant.get_collections()).collections}
+        assert COLLECTION_SESSION_CONTEXT in names
+
+    async def test_creates_lore(self, qdrant):
+        names = {c.name for c in (await qdrant.get_collections()).collections}
+        assert COLLECTION_LORE in names
+
+
+# ---------------------------------------------------------------------------
+# get_points_by_ids
+# ---------------------------------------------------------------------------
+
+class TestGetPointsByIds:
+    async def test_retrieves_written_point(self, qdrant):
+        pid = await write_memory("Lydia", "test", _sem_vec(), _emo_vec(), 1.0)
+        results = await get_points_by_ids(COLLECTION_NPC_MEMORIES, [pid])
+        assert len(results) == 1
+        assert results[0]["id"] == pid
+        assert results[0]["payload"]["agent_id"] == "Lydia"
+
+    async def test_returns_empty_for_unknown_ids(self, qdrant):
+        results = await get_points_by_ids(COLLECTION_NPC_MEMORIES, ["nonexistent"])
+        assert results == []
+
+    async def test_multiple_ids(self, qdrant):
+        id1 = await write_memory("Lydia", "a", _sem_vec(0.1), _emo_vec(0.1), 1.0)
+        id2 = await write_memory("Lydia", "b", _sem_vec(0.2), _emo_vec(0.2), 2.0)
+        results = await get_points_by_ids(COLLECTION_NPC_MEMORIES, [id1, id2])
+        assert len(results) == 2
+        returned_ids = {r["id"] for r in results}
+        assert id1 in returned_ids
+        assert id2 in returned_ids
+
+
+# ---------------------------------------------------------------------------
+# scroll_filtered
+# ---------------------------------------------------------------------------
+
+class TestScrollFiltered:
+    async def test_filters_by_agent(self, qdrant):
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        await write_memory("Lydia", "a", _sem_vec(0.1), _emo_vec(0.1), 1.0)
+        await write_memory("Belethor", "b", _sem_vec(0.2), _emo_vec(0.2), 2.0)
+        filt = Filter(must=[FieldCondition(key="agent_id", match=MatchValue(value="Lydia"))])
+        results = await scroll_filtered(COLLECTION_NPC_MEMORIES, filt)
+        assert len(results) == 1
+        assert results[0]["payload"]["agent_id"] == "Lydia"
+
+    async def test_order_by_game_ts(self, qdrant):
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        await write_memory("Lydia", "second", _sem_vec(0.1), _emo_vec(0.1), 200.0)
+        await write_memory("Lydia", "first", _sem_vec(0.2), _emo_vec(0.2), 100.0)
+        filt = Filter(must=[FieldCondition(key="agent_id", match=MatchValue(value="Lydia"))])
+        results = await scroll_filtered(COLLECTION_NPC_MEMORIES, filt, order_by="game_ts")
+        assert len(results) == 2
+        assert results[0]["payload"]["game_ts"] <= results[1]["payload"]["game_ts"]
+
+    async def test_empty_result(self, qdrant):
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        filt = Filter(must=[FieldCondition(key="agent_id", match=MatchValue(value="Nobody"))])
+        results = await scroll_filtered(COLLECTION_NPC_MEMORIES, filt)
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# search_vector
+# ---------------------------------------------------------------------------
+
+class TestSearchVector:
+    async def test_semantic_search_returns_results(self, qdrant):
+        await write_memory("Lydia", "sword fight", _sem_vec(), _emo_vec(), 1.0)
+        results = await search_vector(
+            COLLECTION_NPC_MEMORIES, "semantic", _sem_vec(), limit=5,
+        )
+        assert len(results) > 0
+        assert "score" in results[0]
+        assert "payload" in results[0]
+
+    async def test_emotional_search_returns_results(self, qdrant):
+        await write_memory("Lydia", "fear moment", _sem_vec(), _emo_vec(), 1.0)
+        results = await search_vector(
+            COLLECTION_NPC_MEMORIES, "emotional", _emo_vec(), limit=5,
+        )
+        assert len(results) > 0
+
+    async def test_empty_collection_returns_empty(self, qdrant):
+        results = await search_vector(
+            COLLECTION_NPC_MEMORIES, "semantic", _sem_vec(), limit=5,
+        )
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# set_point_payload
+# ---------------------------------------------------------------------------
+
+class TestSetPointPayload:
+    async def test_updates_payload_field(self, qdrant):
+        pid = await write_memory("Lydia", "test", _sem_vec(), _emo_vec(), 1.0)
+        await set_point_payload(
+            COLLECTION_NPC_MEMORIES, [pid], {"custom_field": "updated"},
+        )
+        results = await get_points_by_ids(COLLECTION_NPC_MEMORIES, [pid])
+        assert results[0]["payload"]["custom_field"] == "updated"
+        # Original fields still present
+        assert results[0]["payload"]["agent_id"] == "Lydia"

@@ -29,6 +29,7 @@ from shared.schemas import (
 )
 from progeny.src.event_accumulator import EventAccumulator, TurnContext
 from progeny.src.agent_scheduler import AgentScheduler, DispatchGroup
+from progeny.src.fact_pool import FactPool
 from progeny.src import prompt_formatter
 from progeny.src import llm_client
 from progeny.src.llm_client import GenerateResult, LLMError
@@ -45,7 +46,8 @@ router = APIRouter()
 # Pipeline state — lives for the process lifetime.
 # Phase 2: these move to a proper application state container.
 # ---------------------------------------------------------------------------
-_accumulator = EventAccumulator()
+_fact_pool = FactPool()
+_accumulator = EventAccumulator(fact_pool=_fact_pool)
 _scheduler = AgentScheduler()
 _harmonic_state = HarmonicState()
 
@@ -70,6 +72,7 @@ async def _run_group(
         turn_context, group.agents, all_active_npc_ids,
         harmonic_state=_harmonic_state,
         emotional_deltas=emotional_deltas,
+        fact_pool=_fact_pool,
     )
 
     try:

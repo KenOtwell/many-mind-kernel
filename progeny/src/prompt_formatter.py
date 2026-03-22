@@ -22,6 +22,7 @@ from typing import Any
 from shared.constants import ZERO_SEMAGRAM
 from progeny.src.agent_scheduler import ScheduledAgent
 from progeny.src.event_accumulator import AgentBuffer, TieredMemory, TurnContext
+from progeny.src.fact_pool import FactPool
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -76,12 +77,17 @@ INSTRUCTION_PROMPT = (
 )
 
 
+# Tier-scaled fact limits for per-agent known_world
+TIER_FACT_LIMITS: dict[int, int] = {0: 20, 1: 10, 2: 5, 3: 2}
+
+
 def build_prompt(
     turn_context: TurnContext,
     roster: list[ScheduledAgent],
     all_active_npc_ids: list[str] | None = None,
     harmonic_state: "HarmonicState | None" = None,
     emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
+    fact_pool: FactPool | None = None,
 ) -> list[dict[str, str]]:
     """
     Build the 2-message chat completion array for a dispatch group.
@@ -104,6 +110,7 @@ def build_prompt(
     # Message 2: data payload + instruction — rebuilt fresh every turn
     data_payload = _build_data_payload(
         turn_context, roster, all_active_npc_ids, harmonic_state, emotional_deltas,
+        fact_pool,
     )
     user_content = json.dumps(data_payload, indent=None) + "\n\n" + INSTRUCTION_PROMPT
 
@@ -119,27 +126,27 @@ def _build_data_payload(
     all_active_npc_ids: list[str] | None = None,
     harmonic_state: "HarmonicState | None" = None,
     emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
+    fact_pool: FactPool | None = None,
 ) -> dict[str, Any]:
     """Assemble the JSON data payload for message 2."""
     agents = []
     for scheduled in roster:
-        agent_block = _build_agent_block(scheduled, ctx, harmonic_state, emotional_deltas)
+        agent_block = _build_agent_block(
+            scheduled, ctx, harmonic_state, emotional_deltas, fact_pool,
+        )
         agents.append(agent_block)
 
-    # World state — Phase 1: minimal, location + recent world events
-    world_events_summary = [e.raw_data for e in ctx.world_events[-10:]]
-    world_state: dict[str, Any] = {
-        "location": _get_location(ctx),
-        "recent_events": world_events_summary,
-    }
-
     # Present NPCs — all active NPCs this turn, not just those in this group.
-    # Gives partitioned agents awareness of who else is around.
     roster_ids = [a.agent_id for a in roster]
     present_ids = all_active_npc_ids if all_active_npc_ids is not None else roster_ids
 
-    return {
-        "world_state": world_state,
+    # Lore context — shared facts known by everyone (category="lore")
+    lore_context: list[str] = []
+    if fact_pool is not None:
+        lore_facts = fact_pool.query("Player", category="lore", limit=10)
+        lore_context = [f.content for f in lore_facts]
+
+    payload: dict[str, Any] = {
         "present_npcs": present_ids,
         "agents": agents,
         "player_input": {
@@ -147,6 +154,10 @@ def _build_data_payload(
             "text": ctx.player_input,
         },
     }
+    if lore_context:
+        payload["lore_context"] = lore_context
+
+    return payload
 
 
 def _build_agent_block(
@@ -154,6 +165,7 @@ def _build_agent_block(
     ctx: TurnContext,
     harmonic_state: "HarmonicState | None" = None,
     emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
+    fact_pool: FactPool | None = None,
 ) -> dict[str, Any]:
     """
     Build a single agent block at tier-appropriate granularity.
@@ -179,11 +191,18 @@ def _build_agent_block(
         else ZERO_SEMAGRAM
     )
 
+    # Per-agent known world from fact pool (tier-scaled limits)
+    known_world: list[dict] = []
+    if fact_pool is not None:
+        fact_limit = TIER_FACT_LIMITS.get(scheduled.tier, 2)
+        known_world = fact_pool.facts_for_prompt(agent_id, limit=fact_limit)
+
     block: dict[str, Any] = {
         "agent_id": agent_id,
         "tier": scheduled.tier,
         "ticks_since_last_action": scheduled.ticks_since_last_action,
         "base_vector": semagram,
+        "known_world": known_world,
         "recent_events": recent_events,
         "dialogue_history": memory.verbatim,
         "compressed_history": memory.compressed,

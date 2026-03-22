@@ -443,16 +443,18 @@ async def search_vector(
     before client-side λ-blending.
     """
     try:
-        results = await get_client().search(
+        result = await get_client().query_points(
             collection_name=collection,
-            query_vector=(vector_name, query),
+            query=query,
+            using=vector_name,
             limit=limit,
             query_filter=query_filter,
             score_threshold=score_threshold,
+            with_payload=True,
         )
         return [
             {"id": str(r.id), "score": r.score, "payload": r.payload}
-            for r in results
+            for r in result.points
         ]
     except Exception as exc:
         logger.error(

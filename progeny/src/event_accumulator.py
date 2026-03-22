@@ -17,6 +17,10 @@ from typing import Optional
 from shared.constants import TURN_TRIGGER_TYPES, SESSION_TYPES
 from shared.schemas import TickPackage, TypedEvent
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from progeny.src.fact_pool import FactPool
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +81,7 @@ class EventAccumulator:
     with everything the prompt builder needs.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, fact_pool: "FactPool | None" = None) -> None:
         # Per-agent event buffers — persist across ticks until flushed on turn
         self._agent_buffers: dict[str, AgentBuffer] = {}
         # World/info events accumulated between turns
@@ -90,6 +94,8 @@ class EventAccumulator:
         self._pending_player_input: Optional[str] = None
         # Active NPC IDs from latest tick
         self._active_npc_ids: list[str] = []
+        # ATMS fact pool — bitvector-tagged world knowledge
+        self._fact_pool = fact_pool
 
     def ingest(self, package: TickPackage) -> Optional[TurnContext]:
         """
@@ -100,6 +106,16 @@ class EventAccumulator:
         """
         self._active_npc_ids = package.active_npc_ids
         has_turn_trigger = False
+
+        # Present NPCs for fact propagation (player + all active)
+        present_ids = ["Player"] + list(package.active_npc_ids)
+
+        # Register new NPCs in fact pool and give them lore
+        if self._fact_pool is not None:
+            for npc_id in package.active_npc_ids:
+                if self._fact_pool.bit_index.get(npc_id) is None:
+                    self._fact_pool.bit_index.get_or_assign(npc_id)
+                    self._fact_pool.ensure_lore_bits(npc_id)
 
         for event in package.events:
             event_type = event.event_type
@@ -121,6 +137,7 @@ class EventAccumulator:
             if event_type == "location":
                 self.current_location = event.raw_data
                 self._world_events.append(event)
+                self._record_fact(event, present_ids)
                 continue
 
             # Route to agent buffer based on event type
@@ -130,6 +147,9 @@ class EventAccumulator:
             else:
                 # World/info events without a clear agent owner
                 self._world_events.append(event)
+
+            # Record fact for all significant events
+            self._record_fact(event, present_ids)
 
         # If turn trigger detected, flush and return context
         if has_turn_trigger and self._pending_player_input is not None:
@@ -220,6 +240,40 @@ class EventAccumulator:
         if agent_id not in self._agent_buffers:
             self._agent_buffers[agent_id] = AgentBuffer(agent_id=agent_id)
         return self._agent_buffers[agent_id]
+
+    def _record_fact(self, event: TypedEvent, present_ids: list[str]) -> None:
+        """Create a fact from an event and set knowledge bits for present NPCs.
+
+        Speech events additionally propagate to companions in earshot.
+        Location events supersede the previous location fact.
+        """
+        if self._fact_pool is None:
+            return
+
+        content = event.raw_data
+        if not content:
+            return
+
+        category = "event"
+        if event.event_type == "location":
+            category = "location"
+        elif event.event_type == "_speech":
+            category = "speech"
+        elif event.event_type in ("_quest", "_uquest", "quest"):
+            category = "quest"
+
+        fact = self._fact_pool.add_fact(
+            content=content,
+            category=category,
+            game_ts=event.game_ts,
+            knower_ids=present_ids,
+        )
+
+        # Speech: also propagate to companions in earshot
+        if event.event_type == "_speech" and event.parsed_data:
+            companions = event.parsed_data.get("companions", [])
+            if companions:
+                self._fact_pool.propagate_earshot(fact.fact_id, companions)
 
     def _handle_reset(self) -> None:
         """Handle init/wipe — clear all agent buffers and world state."""
