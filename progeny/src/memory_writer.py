@@ -16,16 +16,18 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
+from qdrant_client.models import PointStruct
+
 from shared.constants import (
     COLLECTION_AGENT_STATE,
+    COLLECTION_LORE,
     COLLECTION_NPC_MEMORIES,
     COLLECTION_SESSION_CONTEXT,
     COLLECTION_WORLD_EVENTS,
-    ZERO_SEMAGRAM,
 )
 from shared.schemas import CompressionTier, PrivacyLevel
 
-from .qdrant_client import MMKQdrantClient
+from .qdrant_client import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +47,11 @@ class MemoryWriter:
     consistency and makes the write log auditable.
     """
 
-    def __init__(self, client: MMKQdrantClient):
-        self._client = client
-
     # ------------------------------------------------------------------
     # RAW tier — immutable event log
     # ------------------------------------------------------------------
 
-    def write_raw_event(
+    async def write_raw_event(
         self,
         agent_id: str,
         content: str,
@@ -87,19 +86,26 @@ class MemoryWriter:
         if extra_payload:
             payload.update(extra_payload)
 
-        self._client.upsert_dual_vector(
-            collection=COLLECTION_NPC_MEMORIES,
-            point_id=point_id,
-            semantic_vector=semantic_vector,
-            emotional_vector=emotional_vector,
-            payload=payload,
-        )
+        try:
+            await get_client().upsert(
+                collection_name=COLLECTION_NPC_MEMORIES,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector={"semantic": semantic_vector, "emotional": emotional_vector},
+                        payload=payload,
+                    )
+                ],
+            )
+        except Exception as exc:
+            logger.error("RAW write failed — agent=%s event=%s: %s", agent_id, event_type, exc)
+
         logger.debug(
             "RAW write: agent=%s event=%s id=%s", agent_id, event_type, point_id
         )
         return point_id
 
-    def write_raw_batch(
+    async def write_raw_batch(
         self,
         events: list[dict[str, Any]],
     ) -> list[str]:
@@ -132,16 +138,24 @@ class MemoryWriter:
             extra = evt.get("extra_payload")
             if extra:
                 payload.update(extra)
-            points.append({
-                "id": point_id,
-                "semantic": evt["semantic_vector"],
-                "emotional": evt["emotional_vector"],
-                "payload": payload,
-            })
-        if points:
-            self._client.batch_upsert_dual_vector(
-                COLLECTION_NPC_MEMORIES, points
+            points.append(
+                PointStruct(
+                    id=point_id,
+                    vector={
+                        "semantic": evt["semantic_vector"],
+                        "emotional": evt["emotional_vector"],
+                    },
+                    payload=payload,
+                )
             )
+        if points:
+            try:
+                await get_client().upsert(
+                    collection_name=COLLECTION_NPC_MEMORIES,
+                    points=points,
+                )
+            except Exception as exc:
+                logger.error("RAW batch write failed — %d points: %s", len(points), exc)
             logger.debug("RAW batch write: %d points", len(points))
         return ids
 
@@ -149,7 +163,7 @@ class MemoryWriter:
     # MOD tier — arc summaries
     # ------------------------------------------------------------------
 
-    def write_arc_summary(
+    async def write_arc_summary(
         self,
         agent_id: str,
         summary_text: str,
@@ -166,8 +180,7 @@ class MemoryWriter:
 
         Generated when snap exceeds threshold (event boundary detected).
         The summary spans from arc_start_ts to arc_end_ts and references
-        the RAW points it was derived from. Used as a search aid —
-        retrieval finds the summary, then expands to the underlying RAW data.
+        the RAW points it was derived from.
 
         Returns the summary point ID.
         """
@@ -183,16 +196,26 @@ class MemoryWriter:
             "arc_end_ts": arc_end_ts,
             "raw_point_ids": raw_point_ids,
             "location": location or "",
-            "referents": [],  # Populated from the RAW points during generation
+            "referents": [],
             "privacy_level": PrivacyLevel.COLLECTIVE.value,
         }
-        self._client.upsert_dual_vector(
-            collection=COLLECTION_NPC_MEMORIES,
-            point_id=point_id,
-            semantic_vector=semantic_vector,
-            emotional_vector=emotional_vector,
-            payload=payload,
-        )
+        try:
+            await get_client().upsert(
+                collection_name=COLLECTION_NPC_MEMORIES,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector={"semantic": semantic_vector, "emotional": emotional_vector},
+                        payload=payload,
+                    )
+                ],
+            )
+        except Exception as exc:
+            logger.error(
+                "MOD write failed — agent=%s arc=[%.2f, %.2f]: %s",
+                agent_id, arc_start_ts, arc_end_ts, exc,
+            )
+
         logger.debug(
             "MOD write (arc summary): agent=%s arc=[%.2f, %.2f] id=%s",
             agent_id, arc_start_ts, arc_end_ts, point_id,
@@ -203,7 +226,7 @@ class MemoryWriter:
     # MAX tier — compressed essences (operational compaction)
     # ------------------------------------------------------------------
 
-    def write_compressed_essence(
+    async def write_compressed_essence(
         self,
         agent_id: str,
         essence_text: str,
@@ -214,9 +237,6 @@ class MemoryWriter:
     ) -> str:
         """
         Write a MAX-tier compressed essence.
-
-        Operational compaction — not part of core cognitive loop.
-        Triggered when RAW/MOD point count impacts query performance.
 
         Returns the essence point ID.
         """
@@ -231,13 +251,23 @@ class MemoryWriter:
             "source_arc_ids": source_arc_ids,
             "privacy_level": PrivacyLevel.COLLECTIVE.value,
         }
-        self._client.upsert_dual_vector(
-            collection=COLLECTION_NPC_MEMORIES,
-            point_id=point_id,
-            semantic_vector=semantic_vector,
-            emotional_vector=emotional_vector,
-            payload=payload,
-        )
+        try:
+            await get_client().upsert(
+                collection_name=COLLECTION_NPC_MEMORIES,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector={"semantic": semantic_vector, "emotional": emotional_vector},
+                        payload=payload,
+                    )
+                ],
+            )
+        except Exception as exc:
+            logger.error(
+                "MAX write failed — agent=%s from %d arcs: %s",
+                agent_id, len(source_arc_ids), exc,
+            )
+
         logger.debug(
             "MAX write (essence): agent=%s from %d arcs id=%s",
             agent_id, len(source_arc_ids), point_id,
@@ -248,7 +278,7 @@ class MemoryWriter:
     # World events
     # ------------------------------------------------------------------
 
-    def write_world_event(
+    async def write_world_event(
         self,
         event_type: str,
         content: str,
@@ -268,20 +298,26 @@ class MemoryWriter:
             "location": location or "",
             "involved_npcs": involved_npcs or [],
         }
-        self._client.upsert_dual_vector(
-            collection=COLLECTION_WORLD_EVENTS,
-            point_id=point_id,
-            semantic_vector=semantic_vector,
-            emotional_vector=emotional_vector,
-            payload=payload,
-        )
+        try:
+            await get_client().upsert(
+                collection_name=COLLECTION_WORLD_EVENTS,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector={"semantic": semantic_vector, "emotional": emotional_vector},
+                        payload=payload,
+                    )
+                ],
+            )
+        except Exception as exc:
+            logger.error("World event write failed — type=%s: %s", event_type, exc)
         return point_id
 
     # ------------------------------------------------------------------
     # Agent state snapshots
     # ------------------------------------------------------------------
 
-    def write_agent_state(
+    async def write_agent_state(
         self,
         agent_id: str,
         emotional_vector: list[float],
@@ -310,19 +346,26 @@ class MemoryWriter:
             "coherence": coherence,
             "actor_values": actor_values or {},
         }
-        self._client.upsert_single_vector(
-            collection=COLLECTION_AGENT_STATE,
-            point_id=point_id,
-            vector=emotional_vector,
-            payload=payload,
-        )
+        try:
+            await get_client().upsert(
+                collection_name=COLLECTION_AGENT_STATE,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector={"emotional": emotional_vector},
+                        payload=payload,
+                    )
+                ],
+            )
+        except Exception as exc:
+            logger.error("Agent state write failed — agent=%s: %s", agent_id, exc)
         return point_id
 
     # ------------------------------------------------------------------
     # Session context (pre-interruption stash)
     # ------------------------------------------------------------------
 
-    def stash_session_context(
+    async def stash_session_context(
         self,
         agent_id: str,
         context_text: str,
@@ -344,12 +387,20 @@ class MemoryWriter:
             "stash_reason": stash_reason,
             "rehydrated": False,
         }
-        self._client.upsert_single_vector(
-            collection=COLLECTION_SESSION_CONTEXT,
-            point_id=point_id,
-            vector=semantic_vector,
-            payload=payload,
-        )
+        try:
+            await get_client().upsert(
+                collection_name=COLLECTION_SESSION_CONTEXT,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector={"semantic": semantic_vector},
+                        payload=payload,
+                    )
+                ],
+            )
+        except Exception as exc:
+            logger.error("Session stash failed — agent=%s: %s", agent_id, exc)
+
         logger.debug(
             "Session stash: agent=%s reason=%s id=%s",
             agent_id, stash_reason, point_id,
@@ -360,7 +411,7 @@ class MemoryWriter:
     # Lore
     # ------------------------------------------------------------------
 
-    def write_lore_entry(
+    async def write_lore_entry(
         self,
         topic: str,
         content: str,
@@ -374,10 +425,17 @@ class MemoryWriter:
             "content": content,
             "source": source,
         }
-        self._client.upsert_single_vector(
-            collection=COLLECTION_LORE,
-            point_id=point_id,
-            vector=semantic_vector,
-            payload=payload,
-        )
+        try:
+            await get_client().upsert(
+                collection_name=COLLECTION_LORE,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector={"semantic": semantic_vector},
+                        payload=payload,
+                    )
+                ],
+            )
+        except Exception as exc:
+            logger.error("Lore write failed — topic=%s: %s", topic, exc)
         return point_id

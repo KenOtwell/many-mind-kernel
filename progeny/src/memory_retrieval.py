@@ -21,13 +21,15 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from qdrant_client.models import FieldCondition, Filter, MatchValue
+
 from shared.constants import (
     COLLECTION_LORE,
     COLLECTION_NPC_MEMORIES,
     EMOTIONAL_DIM,
 )
 
-from .qdrant_client import MMKQdrantClient
+from .qdrant_client import get_points_by_ids, search_vector
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +83,11 @@ class MemoryRetriever:
       6. Wrapper block retrieval — pull RAW points in arc windows
     """
 
-    def __init__(self, client: MMKQdrantClient):
-        self._client = client
-
     # ------------------------------------------------------------------
     # Main retrieval pipeline
     # ------------------------------------------------------------------
 
-    def retrieve_for_agent(
+    async def retrieve_for_agent(
         self,
         agent_id: str,
         semantic_query: list[float],
@@ -118,19 +117,23 @@ class MemoryRetriever:
             MemoryBundle ready for prompt assembly.
         """
         # Step 1: Broad dual-vector search
-        agent_filter = self._client.filter_by_agent(agent_id)
-
-        emotional_hits = self._client.search_emotional(
-            collection=COLLECTION_NPC_MEMORIES,
-            query_vector=emotional_query,
-            limit=broad_limit,
-            filter_conditions=agent_filter,
+        agent_filter = Filter(
+            must=[FieldCondition(key="agent_id", match=MatchValue(value=agent_id))]
         )
-        semantic_hits = self._client.search_semantic(
+
+        emotional_hits = await search_vector(
             collection=COLLECTION_NPC_MEMORIES,
-            query_vector=semantic_query,
+            vector_name="emotional",
+            query=emotional_query,
             limit=broad_limit,
-            filter_conditions=agent_filter,
+            query_filter=agent_filter,
+        )
+        semantic_hits = await search_vector(
+            collection=COLLECTION_NPC_MEMORIES,
+            vector_name="semantic",
+            query=semantic_query,
+            limit=broad_limit,
+            query_filter=agent_filter,
         )
 
         # Step 2: Merge and score with λ(t) blending
@@ -150,7 +153,7 @@ class MemoryRetriever:
         anchors = candidates[:final_limit]
 
         # Step 6: Expand anchors to arc context
-        bundle = self._expand_to_bundle(agent_id, anchors)
+        bundle = await self._expand_to_bundle(agent_id, anchors)
 
         logger.debug(
             "Retrieved %d anchors for %s (λ=%.2f, %d recent, %d summaries)",
@@ -163,16 +166,17 @@ class MemoryRetriever:
     # Lore retrieval (semantic only, no emotional axis)
     # ------------------------------------------------------------------
 
-    def retrieve_lore(
+    async def retrieve_lore(
         self,
         semantic_query: list[float],
         limit: int = 3,
         score_threshold: float = 0.3,
     ) -> list[dict[str, Any]]:
         """Retrieve relevant lore entries by semantic similarity."""
-        return self._client.search_semantic(
+        return await search_vector(
             collection=COLLECTION_LORE,
-            query_vector=semantic_query,
+            vector_name="semantic",
+            query=semantic_query,
             limit=limit,
             score_threshold=score_threshold,
         )
@@ -278,7 +282,7 @@ class MemoryRetriever:
     # Arc expansion
     # ------------------------------------------------------------------
 
-    def _expand_to_bundle(
+    async def _expand_to_bundle(
         self,
         agent_id: str,
         anchors: list[RetrievalResult],
@@ -310,7 +314,7 @@ class MemoryRetriever:
                 raw_ids = anchor.payload.get("raw_point_ids", [])
                 unseen = [rid for rid in raw_ids if rid not in seen_raw_ids]
                 if unseen:
-                    raw_points = self._client.get_points(
+                    raw_points = await get_points_by_ids(
                         COLLECTION_NPC_MEMORIES, unseen
                     )
                     for rp in raw_points:

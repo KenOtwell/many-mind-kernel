@@ -43,7 +43,10 @@ from qdrant_client.models import (
 from shared.config import settings
 from shared.constants import (
     COLLECTION_AGENT_STATE,
+    COLLECTION_LORE,
     COLLECTION_NPC_MEMORIES,
+    COLLECTION_SESSION_CONTEXT,
+    COLLECTION_WORLD_EVENTS,
     EMOTIONAL_DIM,
     SEMANTIC_DIM,
 )
@@ -148,6 +151,51 @@ async def ensure_collections() -> None:
             logger.info("Created collection: %s", COLLECTION_AGENT_STATE)
         except Exception as exc:
             logger.error("Failed to create %s: %s", COLLECTION_AGENT_STATE, exc)
+
+    if COLLECTION_WORLD_EVENTS not in existing:
+        try:
+            await client.create_collection(
+                collection_name=COLLECTION_WORLD_EVENTS,
+                vectors_config={
+                    "semantic": VectorParams(
+                        size=SEMANTIC_DIM, distance=Distance.COSINE,
+                    ),
+                    "emotional": VectorParams(
+                        size=EMOTIONAL_DIM, distance=Distance.COSINE,
+                    ),
+                },
+            )
+            logger.info("Created collection: %s", COLLECTION_WORLD_EVENTS)
+        except Exception as exc:
+            logger.error("Failed to create %s: %s", COLLECTION_WORLD_EVENTS, exc)
+
+    if COLLECTION_SESSION_CONTEXT not in existing:
+        try:
+            await client.create_collection(
+                collection_name=COLLECTION_SESSION_CONTEXT,
+                vectors_config={
+                    "semantic": VectorParams(
+                        size=SEMANTIC_DIM, distance=Distance.COSINE,
+                    ),
+                },
+            )
+            logger.info("Created collection: %s", COLLECTION_SESSION_CONTEXT)
+        except Exception as exc:
+            logger.error("Failed to create %s: %s", COLLECTION_SESSION_CONTEXT, exc)
+
+    if COLLECTION_LORE not in existing:
+        try:
+            await client.create_collection(
+                collection_name=COLLECTION_LORE,
+                vectors_config={
+                    "semantic": VectorParams(
+                        size=SEMANTIC_DIM, distance=Distance.COSINE,
+                    ),
+                },
+            )
+            logger.info("Created collection: %s", COLLECTION_LORE)
+        except Exception as exc:
+            logger.error("Failed to create %s: %s", COLLECTION_LORE, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +357,128 @@ async def read_agent_state(agent_id: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 # Dual-vector search
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Generic helpers — used by memory_writer, compression, retrieval, rehydration
+# ---------------------------------------------------------------------------
+
+async def get_points_by_ids(
+    collection: str,
+    point_ids: list[str],
+    with_vectors: bool = False,
+) -> list[dict[str, Any]]:
+    """Retrieve points by their IDs.
+
+    Returns list of dicts with 'id', 'payload', and optionally 'vector'.
+    Empty list if Qdrant is unreachable.
+    """
+    try:
+        results = await get_client().retrieve(
+            collection_name=collection,
+            ids=point_ids,
+            with_vectors=with_vectors,
+            with_payload=True,
+        )
+        return [
+            {
+                "id": str(r.id),
+                "payload": r.payload,
+                "vector": r.vector if with_vectors else None,
+            }
+            for r in results
+        ]
+    except Exception as exc:
+        logger.error("get_points_by_ids failed — collection=%s: %s", collection, exc)
+        return []
+
+
+async def scroll_filtered(
+    collection: str,
+    scroll_filter: Filter,
+    limit: int = 100,
+    with_vectors: bool = False,
+    order_by: str | None = None,
+) -> list[dict[str, Any]]:
+    """Scroll through points matching a filter.
+
+    Returns list of dicts with 'id', 'payload', and optionally 'vector',
+    sorted by order_by payload field if specified.
+    """
+    try:
+        records, _ = await get_client().scroll(
+            collection_name=collection,
+            scroll_filter=scroll_filter,
+            limit=limit,
+            with_vectors=with_vectors,
+            with_payload=True,
+        )
+        results = [
+            {
+                "id": str(r.id),
+                "payload": r.payload,
+                "vector": r.vector if with_vectors else None,
+            }
+            for r in records
+        ]
+        if order_by and results and order_by in (results[0].get("payload") or {}):
+            results.sort(key=lambda r: r["payload"].get(order_by, 0))
+        return results
+    except Exception as exc:
+        logger.error("scroll_filtered failed — collection=%s: %s", collection, exc)
+        return []
+
+
+async def search_vector(
+    collection: str,
+    vector_name: str,
+    query: list[float],
+    limit: int = 10,
+    query_filter: Filter | None = None,
+    score_threshold: float | None = None,
+) -> list[dict[str, Any]]:
+    """Search on a single named vector axis.
+
+    Returns list of dicts with 'id', 'score', 'payload'.
+    Used by memory_retrieval for separate emotional/semantic passes
+    before client-side λ-blending.
+    """
+    try:
+        results = await get_client().search(
+            collection_name=collection,
+            query_vector=(vector_name, query),
+            limit=limit,
+            query_filter=query_filter,
+            score_threshold=score_threshold,
+        )
+        return [
+            {"id": str(r.id), "score": r.score, "payload": r.payload}
+            for r in results
+        ]
+    except Exception as exc:
+        logger.error(
+            "search_vector failed — collection=%s vector=%s: %s",
+            collection, vector_name, exc,
+        )
+        return []
+
+
+async def set_point_payload(
+    collection: str,
+    point_ids: list[str],
+    payload: dict[str, Any],
+) -> None:
+    """Update payload fields on existing points."""
+    try:
+        await get_client().set_payload(
+            collection_name=collection,
+            payload=payload,
+            points=point_ids,
+        )
+    except Exception as exc:
+        logger.error(
+            "set_point_payload failed — collection=%s: %s", collection, exc,
+        )
+
 
 async def search_memories(
     emotional_vec: list[float],

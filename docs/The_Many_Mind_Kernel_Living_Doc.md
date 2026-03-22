@@ -243,16 +243,16 @@ When NPCs are in scripted quest sequences, the Creation Engine's quest AI owns t
 
 ## Current State
 
-**GitHub**: https://github.com/KenOtwell/mini-mind-kernel (public, MIT). Falcon + Progeny code, shared schemas, 84 tests passing. Both Falcon (StealthVI) and Progeny (Beelink) pull from this repo.
+**GitHub**: https://github.com/KenOtwell/many-mind-kernel (public, MIT). Falcon + Progeny code, shared schemas, 84 tests passing. Both Falcon (StealthVI) and Progeny (Beelink) pull from this repo.
 
 **Qdrant Instance**: `C:\Tools\qdrant\qdrant.exe` — ports 6333 (REST) / 6334 (gRPC), bound to `0.0.0.0` (LAN-accessible). Config: `C:\Tools\qdrant\config.yaml`. Progeny (Beelink at `192.168.0.220`) confirmed connecting to `192.168.0.13:6333`.
 
 **Progeny Qdrant Wrapper Modules** (committed, in `progeny/src/`):
-* `qdrant_client.py` — MMKQdrantClient: connection management, dual-vector (semantic 384d + emotional 9d) upsert/search
-* `memory_writer.py` — MemoryWriter: RAW/MOD/MAX tier writes, world events, agent state snapshots, session stash, lore
-* `memory_retrieval.py` — MemoryRetriever: λ(t)-weighted dual-vector search, recency decay, referent boosting, arc expansion
-* `compression.py` — ArcCompressor (snap-threshold → MOD) + EssenceDistiller (MOD groups → MAX)
-* `rehydration.py` — Rehydrator: MAX→MOD→RAW expansion chain, post-interruption stash recovery
+* `qdrant_client.py` — Async module-level API: `init()`, `get_client()`, `ensure_collections()`, `write_memory()`, `write_agent_state()`, `read_agent_state()`, `search_memories()` (RRF fusion), plus generic helpers (`get_points_by_ids`, `scroll_filtered`, `search_vector`, `set_point_payload`). AsyncQdrantClient singleton, dual-vector (semantic 384d + emotional 9d).
+* `memory_writer.py` — MemoryWriter: async RAW/MOD/MAX tier writes, world events, agent state snapshots, session stash, lore. Uses `get_client()` directly.
+* `memory_retrieval.py` — MemoryRetriever: async λ(t)-weighted dual-vector search, recency decay, referent boosting, arc expansion. Uses `search_vector()` for separate axis passes.
+* `compression.py` — ArcCompressor (snap-threshold → MOD) + EssenceDistiller (MOD groups → MAX). Async, uses `scroll_filtered()` and `get_points_by_ids()`.
+* `rehydration.py` — Rehydrator: async MAX→MOD→RAW expansion chain, post-interruption stash recovery. Uses module-level helpers.
 
 **MMK Qdrant Collections** (5 new, 17 total):
 * `skyrim_npc_memories` — dual named vectors (semantic:384d + emotional:9d), indexes: agent_id, tier, game_ts, privacy_level

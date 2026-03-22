@@ -23,18 +23,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from qdrant_client.http.models import (
-    FieldCondition,
-    Filter,
-    MatchValue,
-)
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from shared.constants import (
     COLLECTION_NPC_MEMORIES,
     COLLECTION_SESSION_CONTEXT,
 )
 
-from .qdrant_client import MMKQdrantClient
+from .qdrant_client import get_points_by_ids, scroll_filtered, set_point_payload
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +52,7 @@ class Rehydrator:
     refs down to full RAW text for inclusion in the prompt.
     """
 
-    def __init__(self, client: MMKQdrantClient):
-        self._client = client
+    def __init__(self) -> None:
         # Per-agent stabilization counters: agent_id → ticks_below_threshold
         self._stabilization_counters: dict[str, int] = {}
 
@@ -65,7 +60,7 @@ class Rehydrator:
     # Ref expansion (MAX → MOD → RAW)
     # ------------------------------------------------------------------
 
-    def expand_refs(
+    async def expand_refs(
         self,
         expandable_refs: list[str],
         max_raw_points: int = 20,
@@ -84,7 +79,7 @@ class Rehydrator:
             return []
 
         # Step 1: Retrieve MAX points
-        max_points = self._client.get_points(
+        max_points = await get_points_by_ids(
             COLLECTION_NPC_MEMORIES, expandable_refs
         )
         if not max_points:
@@ -107,7 +102,7 @@ class Rehydrator:
             ]
 
         # Step 3: Retrieve MOD arc summaries
-        arc_points = self._client.get_points(COLLECTION_NPC_MEMORIES, arc_ids)
+        arc_points = await get_points_by_ids(COLLECTION_NPC_MEMORIES, arc_ids)
 
         # Step 4: Collect all raw point IDs from arcs
         raw_ids: list[str] = []
@@ -129,7 +124,7 @@ class Rehydrator:
             ]
 
         # Step 5: Retrieve RAW points
-        raw_points = self._client.get_points(COLLECTION_NPC_MEMORIES, raw_ids)
+        raw_points = await get_points_by_ids(COLLECTION_NPC_MEMORIES, raw_ids)
 
         results = [
             {
@@ -168,7 +163,7 @@ class Rehydrator:
             self._stabilization_counters[agent_id] = 0
             return False
 
-    def recover_stashed_context(
+    async def recover_stashed_context(
         self,
         agent_id: str,
         limit: int = 3,
@@ -185,9 +180,9 @@ class Rehydrator:
                 FieldCondition(key="rehydrated", match=MatchValue(value=False)),
             ]
         )
-        stashed = self._client.scroll_by_filter(
+        stashed = await scroll_filtered(
             collection=COLLECTION_SESSION_CONTEXT,
-            filter_conditions=stash_filter,
+            scroll_filter=stash_filter,
             limit=limit,
         )
 
@@ -195,12 +190,12 @@ class Rehydrator:
             return []
 
         # Mark as rehydrated so we don't re-inject on subsequent turns
-        for entry in stashed:
-            self._client.client.set_payload(
-                collection_name=COLLECTION_SESSION_CONTEXT,
-                payload={"rehydrated": True},
-                points=[entry["id"]],
-            )
+        stashed_ids = [entry["id"] for entry in stashed]
+        await set_point_payload(
+            collection=COLLECTION_SESSION_CONTEXT,
+            point_ids=stashed_ids,
+            payload={"rehydrated": True},
+        )
 
         # Reset stabilization counter
         self._stabilization_counters.pop(agent_id, None)

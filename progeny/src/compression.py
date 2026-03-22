@@ -18,10 +18,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
+
 from shared.constants import COLLECTION_NPC_MEMORIES
 
 from .memory_writer import MemoryWriter
-from .qdrant_client import MMKQdrantClient
+from .qdrant_client import get_points_by_ids, scroll_filtered
 
 logger = logging.getLogger(__name__)
 
@@ -44,18 +46,15 @@ class ArcCompressor:
 
     def __init__(
         self,
-        client: MMKQdrantClient,
         writer: MemoryWriter,
         llm_summarize_fn: Optional[Any] = None,
     ):
         """
         Args:
-            client: Qdrant client for reading RAW points.
             writer: Memory writer for MOD/MAX writes.
             llm_summarize_fn: Async callable(text: str) -> str that
                 summarizes text. If None, uses heuristic truncation.
         """
-        self._client = client
         self._writer = writer
         self._llm_summarize = llm_summarize_fn
 
@@ -63,7 +62,7 @@ class ArcCompressor:
         """Check if snap exceeds threshold (event boundary detected)."""
         return abs(snap) >= threshold
 
-    def generate_arc_summary(
+    async def generate_arc_summary(
         self,
         agent_id: str,
         arc_start_ts: float,
@@ -82,8 +81,6 @@ class ArcCompressor:
         Returns the arc summary point ID, or None if no RAW points found.
         """
         # Retrieve RAW points in the arc window
-        from qdrant_client.http.models import FieldCondition, Filter, MatchValue, Range
-
         arc_filter = Filter(
             must=[
                 FieldCondition(key="agent_id", match=MatchValue(value=agent_id)),
@@ -91,9 +88,9 @@ class ArcCompressor:
                 FieldCondition(key="game_ts", range=Range(gte=arc_start_ts, lte=arc_end_ts)),
             ]
         )
-        raw_points = self._client.scroll_by_filter(
+        raw_points = await scroll_filtered(
             collection=COLLECTION_NPC_MEMORIES,
-            filter_conditions=arc_filter,
+            scroll_filter=arc_filter,
             limit=200,
             order_by="game_ts",
         )
@@ -114,7 +111,7 @@ class ArcCompressor:
         summary_text = self._summarize(combined_text, agent_id)
 
         # Write the arc summary
-        point_id = self._writer.write_arc_summary(
+        point_id = await self._writer.write_arc_summary(
             agent_id=agent_id,
             summary_text=summary_text,
             semantic_vector=semantic_vector,
@@ -180,15 +177,13 @@ class EssenceDistiller:
 
     def __init__(
         self,
-        client: MMKQdrantClient,
         writer: MemoryWriter,
         llm_summarize_fn: Optional[Any] = None,
     ):
-        self._client = client
         self._writer = writer
         self._llm_summarize = llm_summarize_fn
 
-    def distill_arcs(
+    async def distill_arcs(
         self,
         agent_id: str,
         arc_point_ids: list[str],
@@ -201,7 +196,7 @@ class EssenceDistiller:
 
         Returns the essence point ID, or None if no arcs found.
         """
-        arc_points = self._client.get_points(
+        arc_points = await get_points_by_ids(
             COLLECTION_NPC_MEMORIES, arc_point_ids
         )
         if not arc_points:
@@ -219,7 +214,7 @@ class EssenceDistiller:
         else:
             essence_text = ArcCompressor._heuristic_summarize(combined, max_chars=300)
 
-        point_id = self._writer.write_compressed_essence(
+        point_id = await self._writer.write_compressed_essence(
             agent_id=agent_id,
             essence_text=essence_text,
             semantic_vector=semantic_vector,
