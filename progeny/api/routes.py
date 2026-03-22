@@ -34,8 +34,7 @@ from progeny.src import llm_client
 from progeny.src.llm_client import GenerateResult, LLMError
 from progeny.src import response_expander
 from progeny.src.memory_compressor import slide_window
-from progeny.src import embedding
-from progeny.src import emotional_projection
+from progeny.src import emotional_delta
 from progeny.src.harmonic_buffer import HarmonicState
 
 logger = logging.getLogger(__name__)
@@ -146,8 +145,8 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
     # Record player input in dialogue history for all active agents
     _accumulator.record_player_input(turn_context.player_input)
 
-    # Emotional pipeline: embed incoming text → project → update harmonic buffers
-    _update_emotional_state_from_events(turn_context)
+    # Emotional pipeline: inbound text → 9d projection → update harmonic buffers
+    emotional_delta.process_inbound(turn_context, _harmonic_state)
 
     # Step 2: Schedule agents
     roster = _scheduler.schedule(turn_context.active_npc_ids)
@@ -202,8 +201,8 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
                         buf.active_task or "(cleared)",
                     )
 
-    # Emotional adoption: embed LLM-generated utterances → update harmonic buffers
-    _update_emotional_state_from_outputs(all_responses)
+    # Emotional adoption: agent's own words shift its state (bidirectional pipeline)
+    emotional_delta.process_outbound(all_responses, _harmonic_state)
 
     # Slide memory windows — compress overflow after new entries recorded
     for agent_id in turn_context.active_npc_ids:
@@ -233,60 +232,6 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
         llm_timings=timings,
     )
 
-
-# ---------------------------------------------------------------------------
-# Emotional pipeline helpers
-# ---------------------------------------------------------------------------
-
-def _update_emotional_state_from_events(turn_context: TurnContext) -> None:
-    """Embed incoming speech events and player input, update harmonic buffers.
-
-    Runs before prompt building so agent blocks carry live semagrams.
-    """
-    # Player input affects all active agents' emotional state
-    player_text = turn_context.player_input
-    if player_text:
-        player_emb = embedding.embed_one(player_text)
-        player_sem = emotional_projection.project(player_emb)
-        for agent_id in turn_context.active_npc_ids:
-            _harmonic_state.update(agent_id, player_sem)
-
-    # NPC speech events this tick — each affects the speaking agent
-    for agent_id, buf in turn_context.agent_buffers.items():
-        speech_texts = [
-            e.raw_data for e in buf.events
-            if e.event_type == "_speech" and e.raw_data
-        ]
-        if speech_texts:
-            embs = embedding.embed(speech_texts)
-            sems = emotional_projection.project_batch(embs)
-            # Update with mean semagram for this tick's speech
-            mean_sem = sems.mean(axis=0).tolist()
-            _harmonic_state.update(agent_id, mean_sem)
-
-
-def _update_emotional_state_from_outputs(responses: list[AgentResponse]) -> None:
-    """Embed LLM-generated utterances and update harmonic buffers.
-
-    Emotional adoption: the agent's state shifts to reflect what it said.
-    Runs after recording outputs in dialogue history.
-    """
-    # Batch embed all utterances at once for efficiency
-    utterance_pairs = [
-        (resp.agent_id, resp.utterance)
-        for resp in responses
-        if resp.utterance
-    ]
-    if not utterance_pairs:
-        return
-
-    agent_ids = [aid for aid, _ in utterance_pairs]
-    texts = [text for _, text in utterance_pairs]
-    embs = embedding.embed(texts)
-    sems = emotional_projection.project_batch(embs)
-
-    for agent_id, sem in zip(agent_ids, sems):
-        _harmonic_state.update(agent_id, sem.tolist())
 
 
 @router.get("/health")
