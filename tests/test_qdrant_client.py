@@ -1,4 +1,4 @@
-"""Tests for progeny.src.client.
+"""Tests for progeny.src.qdrant_client.
 
 Uses AsyncQdrantClient(':memory:') injected via the `qdrant` fixture —
 no live Qdrant instance required. All tests are async (asyncio_mode=auto).
@@ -8,8 +8,8 @@ from __future__ import annotations
 import pytest
 from qdrant_client import AsyncQdrantClient
 
-import progeny.src.client as client_mod
-from progeny.src.client import (
+import progeny.src.qdrant_client as client_mod
+from progeny.src.qdrant_client import (
     _agent_state_point_id,
     ensure_collections,
     read_agent_state,
