@@ -14,6 +14,7 @@ from progeny.api.routes import router
 from progeny.src import llm_client
 from progeny.src import embedding
 from progeny.src import emotional_projection
+from progeny.src import client as qdrant_client
 from progeny.src.prompt_formatter import SYSTEM_PROMPT
 from shared.config import settings
 
@@ -66,6 +67,11 @@ async def lifespan(app: FastAPI):
     embedding.load_model()
     emotional_projection.load_bases()
     logger.info("Emotional pipeline ready")
+    # Connect to Qdrant and create collections if needed
+    await qdrant_client.init()
+    await qdrant_client.ensure_collections()
+    qdrant_ok = await qdrant_client.health_check()
+    logger.info("Qdrant: %s", "connected" if qdrant_ok else "unreachable (will retry per-op)")
     await _warm_kv_cache()
     yield
     logger.info("Progeny shutting down")
