@@ -118,6 +118,7 @@ COLLECTION_WORLD_EVENTS: str = "skyrim_world_events"
 COLLECTION_SESSION_CONTEXT: str = "skyrim_session_context"
 COLLECTION_AGENT_STATE: str = "skyrim_agent_state"
 COLLECTION_LORE: str = "skyrim_lore"
+COLLECTION_NPC_PROFILES: str = "skyrim_npc_profiles"
 
 
 # ---------------------------------------------------------------------------
