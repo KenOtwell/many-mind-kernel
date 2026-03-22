@@ -299,6 +299,16 @@ When NPCs are in scripted quest sequences, the Creation Engine's quest AI owns t
 * `qdrant_memory_store.py` — privacy-aware CRUD, 4-tier compression, caching, pub/sub
 * `thoughtstream_memory.py` — emotional thread tracing, wobble sync, resonance amplification
 
+**Rich Modlist Deployment Notes** (Panda's Sovngarde / large Wabbajack lists):
+
+The system was initially designed for vanilla + CHIM. A rich behavior modlist changes the event landscape substantially — and entirely in our favor.
+
+* **Every behavior mod is an event source.** NPC reaction mods (`NPCs React to Necromancy`, `Scared of Shootings`, etc.) generate `info`/`infoaction` events. Dialogue mods (RDO, GDO, FCO, `Chatty NPCs`) generate `chat` events. All of this flows through Falcon, gets adopted into NPC histories, and feeds the harmonic buffers. The scripted AI is not competing with MMK — it is providing the sensory input layer.
+* **Increase Actors in a Cell** (up to 75 active actors) makes the scheduler's Tier 2/3 cadence filtering non-trivial. Token budget math holds; the harmonic cadence earns its keep at scale.
+* **Nether's Follower Framework (NFF)**: our `is_follower` detection and `MakeFollower` command must be NFF-aware. NFF manages follower factions differently from vanilla. Verify `is_follower` flag against NFF's follower faction formIDs, not just vanilla `0x0005c84e`.
+* **Pre-populated NPC histories**: by the time the player first speaks to an NPC, that NPC may already have a rich adopted history from RDO relationship dialogue, ambient barks, reaction events. Cold-start NPCs are not cold — they are nascent. This amplifies the Cold-Start Identity Formation pathway described above.
+* **Panda's Sovngarde was designed as the richest non-LLM NPC experience possible**, using volume of scripted behavior to approximate cognitive depth. MMK adds the actual cognition layer. The scripted behavior becomes the training data; the system provides the mind.
+
 ## SKSE Wire Protocol
 
 The SKSE plugin (AIAgent.dll) communicates via simple HTTP POST. Our FastAPI endpoint must be 100% wire-compatible. **Source of truth**: Full ChIM source now local at `docs/AIAgent/` (mod files + Papyrus source) and `docs/Dwemer Distro/` (HerikaServer PHP backend, extractable from `.tar`). Key files verified against actual source: `main.php` (base64 pipe-delimited wire parser, line 106: `$gameRequest = explode("|", $receivedData)`), `comm.php` (legacy entry point), `processor/comm.php` (response formatting). Also available on GitHub: `abeiro/HerikaServer` branch `aiagent`.
@@ -721,6 +731,42 @@ This is not a hack — it mirrors how human cognition actually works. We don't h
 * No provenance flag, no source tracking. The adoption is total.
 * All adopted behavior flows through Progeny's `emotional_delta.py` for embedding and delta computation, same as LLM-generated output.
 
+### Cold-Start Identity Formation
+
+When an `addnpc` event arrives and the NPC's slug matches nothing in `skyrim_npc_profiles`, no biography seed is loaded. This is not an error — it is an alternative developmental path.
+
+**What cold-start NPCs have:**
+* Zero harmonic state (zero-init: first deltas ARE initial values)
+* Complete, accurate memories of everything they do once active (behavior adoption is total)
+* All scripted behavior from behavior mods adopted as their own — every reaction event, every ambient dialogue line, every faction interaction
+
+**What cold-start NPCs lack:**
+* A stated identity kernel ("Roleplay as X...")
+* Pre-loaded goals, relationships, backstory
+* The *felt sense of deliberation* that preceded their scripted actions
+
+This is not amnesia. Amnesia patients have *missing* memories. Cold-start NPCs have *complete* memories — every adopted action is in their RAW history with full emotional vectors. What they lack is access to the causal layer that produced those actions. The quest script, the AI package, the mod behavior — that layer is invisible to them. They see only the output. They remember *doing* it; they don't remember *deciding* it.
+
+The result: an NPC who must construct meaning from evidence rather than apply a pre-loaded narrative. The LLM's rationalizations become the character. The harmonic buffers accumulate the emotional weight of those rationalizations. A coherent identity emerges — not loaded, but *grown*. This is especially pronounced for handcrafted custom NPCs from narrative mods: the scripted behaviors were designed with intent, but the NPC constructs their *own* theory of why they keep doing these things.
+
+**Rich modlist pre-seeding**: When a modlist includes extensive scripted AI (NPC reaction mods, dialogue overhauls, follower behavior frameworks), cold-start NPCs arrive with populated adopted histories before the player speaks to them. Their harmonic buffers have already processed dozens of events. They are not cold in any practical sense — they are nascent.
+
+### Goal Resonance — Propositional vs. Resonant Goals
+
+A seeded NPC's goals are *propositional* — stated strings in the identity kernel ("I protect my thane"). A cold-start NPC's goals, when they develop, are *resonant* — encoded in the slow harmonic buffer's convergent emotional signature from repeated relevant experiences.
+
+**The hypothesis**: resonated goals may be more durable than assigned goals. The slow buffer carries the accumulated emotional cost of every relevant experience. Contradicting a resonated goal produces real harmonic dissonance — snap spikes, curvature surges, λ shifts. Contradicting a stated goal produces only a prompt-level inconsistency, which the LLM can rationalize away.
+
+**The natural experiment**: any deployment with both seeded NPCs and unknown/custom NPCs creates side-by-side comparison subjects. Run both through the same scenario sequence. Compare:
+* λ(t) trajectories under goal-threatening events
+* Curvature magnitude at decision points where goals conflict with new information
+* Specificity and depth of rationalization when behavior contradicts stated vs. resonant goals
+* Behavioral stability across extended sessions
+
+**Observable prediction**: cold-start NPCs show higher early volatility (high curvature, frequent snap) stabilizing over time as the slow buffer converges. Seeded NPCs show lower early volatility but potentially more brittle goal-holding under sustained pressure — the stated goal is a claim, not an emotional substrate.
+
+**No new code required**: the architecture already captures everything needed. Persisting `emotional_delta.py` outputs alongside session data enables post-session analysis. The experiment runs itself.
+
 ## Goal Planner & Affordance System
 
 Agents need to act autonomously across time. When a player says "Go to Windhelm and fetch my good sword," the NPC needs to decompose that into steps, execute them across many ticks without LLM involvement, handle failures, and exploit opportunities. This is constraint-based state-space planning with the 43-command vocabulary as the operator library.
@@ -964,6 +1010,26 @@ Player walks from the gate toward Dragonsreach. ~60 NPCs loaded in the city.
 * Curvature-driven promotion uses the same emotional signal that drives everything else — no separate "alert" system
 * The harmonic cadence means every NPC's mind ticks at its own frequency relative to the player. High-frequency attention for nearby minds, low-frequency background hum for distant ones. The city is alive at every timescale simultaneously — the Many-Mind Kernel is literally a kernel scheduling mind-processes.
 
+### Named Antagonists — Enemy Intelligence at Background Tier
+
+Anonymous hostile NPCs (generic bandits, draugr, wolves) are excluded from MMK entirely. Their combat behavior is the engine's domain. **We don't give enemies more brains.**
+
+**Exception: named antagonists.** Named enemies with distinct identities, organizational roles, and personal histories — a bandit chief, a Thalmor inquisitor, a necromancer with a research agenda, an assassin with a contract — participate in the cognitive system at Tier 3+ (background, infrequent paging). Their cognition is adversarial and *pre-planned*.
+
+**The core insight**: enemy intelligence happens *between* encounters, not during them. A named antagonist at background tier thinks at low frequency — planning, adapting, processing defeats, signaling allies. When combat begins, the engine's fast-twitch AI runs the fight. The LLM already set the posture ticks ago.
+
+**What this enables:**
+* Ambushes that were actually planned — the antagonist's emotional arc of threat, calculation, and preparation was built across prior ticks
+* Asymmetric information — the antagonist's internal state (plans, fears, grievances) is never visible to the player. The player only sees outputs. The mystery is the feature.
+* Survivors adapt — if the player repeatedly disrupts an operation, the antagonist processes that pattern and changes tactics
+* Quest-collision guard applies identically — when scripted sequences override the antagonist's behavior, they "come out of the trance" gradually on scene exit
+
+**Scheduling rule**: Named NPCs identified as hostile (via faction data from `addnpc` fields `[42]`, relationship rank, or `in_scene` + combat state) participate at Tier 3+. During active combat they are excluded entirely — engine AI runs. At background tier cadence hits, the LLM processes what happened and updates their state.
+
+**Identification heuristic**: Named NPC (non-generic base ID) + hostile faction membership = named antagonist candidate. Anonymous enemies sharing a base ID template are excluded. The `addnpc` `[41]` mods field disambiguates custom/mod NPCs from vanilla generics.
+
+**This is not "giving enemies more brains" at combat time.** The engine still handles fighting. The named antagonist's intelligence is strategic disposition — set before combat, refined after. The difference between a scripted ambush and an MMK ambush is that the MMK version has genuine emotional stakes behind it. The antagonist was calculating, then afraid, then angry. That arc is real.
+
 ## Canonical Prompt JSON Schema
 
 Developed with Kato/Copilot. Wire format between our marshaller and the Beelink LLM.
@@ -1049,7 +1115,7 @@ Developed with Kato/Copilot. Wire format between our marshaller and the Beelink 
     * **Social/State**: Talk, SetCurrentTask, JoinSquad (MakeFollower), EndConversation, LetsRelax (Relax), TakeASeat, GoToSleep, WaitHere (disabled by default)
     * **Ceremonial/Special**: MakeAToast (Toast), Drink, StartRitualCeremony, EndRitualCeremony, Training, UseSoulGaze
     Full definitions in HerikaServer `functions/functions.php` (aiagent branch), imported via `static_import.py`. `prompt_formatter.py` injects both the actor value dial descriptions and the available command menu into each prompt. `response_expander.py` validates actor_value_deltas (clamp to valid ranges) and drops unknown commands (graceful degradation). For backends supporting constrained decoding, `llm_client.py` can enforce the schema at generation time.
-    **Custom SKSE extensions required**: `Equip` (switch weapon/armor — Papyrus `Actor.EquipItem`), `GetActorValue`/`SetActorValue` (read/write behavioral dials). These are trivial Papyrus calls but not in the current HerikaServer SKSE plugin.
+    **`actor_value_deltas` wire implementation**: `SetActorValue` is already in `AIAgentAIMind.psc` (verified from source — see lines setting `Aggression`, `Confidence` in `StartCombat()`, `AttackTarget()`, `SpawnAgent()`). The gap is wire protocol routing, not missing API. Implementation path: (1) add `SetBehavior` to `COMMAND_VOCABULARY`; (2) Falcon emits `NPCName|command|SetBehavior@Aggression@2\r\n`; (3) short Papyrus script listens to the existing `CHIM_CommandReceived` ModEvent and calls `npc.SetActorValue("Aggression", 2.0)`. The ModEvent dispatch infrastructure is already wired in `AIAgentAIMind.psc` (`SendExternalEvent`). This is a ~20-line Papyrus addition, not a DLL extension.
 
 ## System Prompt Template — The Ritual
 
