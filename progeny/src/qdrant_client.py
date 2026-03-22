@@ -45,6 +45,7 @@ from shared.constants import (
     COLLECTION_AGENT_STATE,
     COLLECTION_LORE,
     COLLECTION_NPC_MEMORIES,
+    COLLECTION_NPC_PROFILES,
     COLLECTION_SESSION_CONTEXT,
     COLLECTION_WORLD_EVENTS,
     EMOTIONAL_DIM,
@@ -196,6 +197,21 @@ async def ensure_collections() -> None:
             logger.info("Created collection: %s", COLLECTION_LORE)
         except Exception as exc:
             logger.error("Failed to create %s: %s", COLLECTION_LORE, exc)
+
+    if COLLECTION_NPC_PROFILES not in existing:
+        try:
+            await client.create_collection(
+                collection_name=COLLECTION_NPC_PROFILES,
+                vectors_config={
+                    # semantic only — NPC profiles are searched by text similarity
+                    "semantic": VectorParams(
+                        size=SEMANTIC_DIM, distance=Distance.COSINE,
+                    ),
+                },
+            )
+            logger.info("Created collection: %s", COLLECTION_NPC_PROFILES)
+        except Exception as exc:
+            logger.error("Failed to create %s: %s", COLLECTION_NPC_PROFILES, exc)
 
 
 # ---------------------------------------------------------------------------
