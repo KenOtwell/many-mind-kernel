@@ -40,3 +40,6 @@ docs/Dwemer Distro/
 
 # Qdrant local data
 qdrant_data/
+
+# Sensitive network diagrams (contains local IPs)
+network.jpg
