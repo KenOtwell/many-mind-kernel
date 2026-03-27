@@ -11,8 +11,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from qdrant_client import AsyncQdrantClient
+
 from falcon.api.routes import router, startup as routes_startup, shutdown as routes_shutdown
 from falcon.src.progeny_protocol import close as close_progeny_client
+from shared import embedding, emotional
 from shared.config import settings
 
 logging.basicConfig(
@@ -22,16 +25,33 @@ logging.basicConfig(
 logger = logging.getLogger("falcon")
 
 
+# Module-level Qdrant client — initialized in lifespan, used by routes.
+qdrant_client: AsyncQdrantClient | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
+    global qdrant_client
     logger.info("Falcon starting — listening on %s:%d%s",
                 settings.falcon.host, settings.falcon.port, settings.falcon.comm_path)
     logger.info("Progeny endpoint: %s/ingest", settings.progeny.base_url)
+    # Load enrichment pipeline (CPU, ~2s total)
+    embedding.load_model()
+    emotional.load_bases()
+    logger.info("Enrichment pipeline ready (embedding + emotional projection)")
+    # Connect to local Qdrant
+    qdrant_client = AsyncQdrantClient(
+        host=settings.qdrant.host, port=settings.qdrant.rest_port,
+    )
+    logger.info("Qdrant client initialized → %s:%d",
+                settings.qdrant.host, settings.qdrant.rest_port)
     await routes_startup()
     yield
     await routes_shutdown()
     await close_progeny_client()
+    if qdrant_client:
+        await qdrant_client.close()
     logger.info("Falcon shut down")
 
 

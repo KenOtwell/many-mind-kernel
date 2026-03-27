@@ -20,7 +20,9 @@ from falcon.src.progeny_protocol import send_package
 from falcon.src.event_parsers import parse_typed_data
 from falcon.src.tick_accumulator import TickAccumulator
 from shared.schemas import TypedEvent, TickPackage, TurnResponse
+from shared.constants import COLLECTION_NPC_MEMORIES
 from shared.config import settings
+from shared import qdrant_wrapper
 
 logger = logging.getLogger(__name__)
 
@@ -190,11 +192,20 @@ async def _decode_skse_request(request: Request) -> str:
 # ---------------------------------------------------------------------------
 
 async def _process_tick(package: TickPackage) -> None:
-    """Send TickPackage to Progeny and queue any TurnResponse for SKSE polling."""
+    """Send TickPackage to Progeny and queue any TurnResponse for SKSE polling.
+
+    Outbound path: if Progeny returns utterance_key (Qdrant point ID)
+    instead of inline utterance text, Falcon reads the text from Qdrant
+    by key before formatting to wire. Falls back to inline utterance
+    for backward compat (stub mode, tests).
+    """
     try:
         result = await send_package(package)
 
         if result and isinstance(result, TurnResponse) and result.responses:
+            # Resolve any utterance_key references to inline text
+            await _resolve_utterance_keys(result)
+
             wire_output = format_turn_response(
                 [r.model_dump() for r in result.responses]
             )
@@ -207,6 +218,31 @@ async def _process_tick(package: TickPackage) -> None:
 
     except Exception:
         logger.exception("Failed to process tick package")
+
+
+async def _resolve_utterance_keys(turn: TurnResponse) -> None:
+    """Resolve utterance_key → inline utterance text via Qdrant read.
+
+    For each AgentResponse that has utterance_key but no utterance,
+    read the text from Qdrant and set it inline. Wire formatting
+    only sees utterance text — keys are transparent at this layer.
+    """
+    from falcon.api.server import qdrant_client
+    if qdrant_client is None:
+        return
+
+    for resp in turn.responses:
+        if resp.utterance_key and not resp.utterance:
+            text = await qdrant_wrapper.read_text(
+                qdrant_client, COLLECTION_NPC_MEMORIES, resp.utterance_key,
+            )
+            if text:
+                resp.utterance = text
+            else:
+                logger.warning(
+                    "Failed to resolve utterance_key %s for %s",
+                    resp.utterance_key, resp.agent_id,
+                )
 
 
 # ---------------------------------------------------------------------------

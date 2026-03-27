@@ -371,9 +371,16 @@ class NewMemory(BaseModel):
 
 
 class AgentResponse(BaseModel):
-    """Response for a single agent from the LLM turn."""
+    """Response for a single agent from the LLM turn.
+
+    utterance_key: if set, the utterance text was written to Qdrant via
+    the enrichment wrapper and this is the point ID. Falcon reads the
+    text by key for wire formatting. Falls back to inline utterance if
+    utterance_key is None (backward compat, tests, stub mode).
+    """
     agent_id: str
     utterance: Optional[str] = None
+    utterance_key: Optional[str] = None
     actor_value_deltas: Optional[ActorValueDeltas] = None
     actions: list[ActionCommand] = Field(default_factory=list)
     updated_harmonics: Optional[UpdatedHarmonics] = None
