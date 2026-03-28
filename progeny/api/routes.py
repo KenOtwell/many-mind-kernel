@@ -40,8 +40,11 @@ from progeny.src.memory_compressor import slide_window
 from progeny.src import emotional_delta
 from progeny.src.harmonic_buffer import HarmonicState
 from progeny.src.memory_writer import MemoryWriter
+from progeny.src.memory_retrieval import MemoryRetriever, MemoryBundle
 from progeny.src.compression import ArcCompressor, DEFAULT_SNAP_THRESHOLD
 from progeny.src import qdrant_client as progeny_qdrant
+from shared import embedding as shared_embedding
+from shared import emotional as shared_emotional
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +59,7 @@ _accumulator = EventAccumulator(fact_pool=_fact_pool)
 _scheduler = AgentScheduler()
 _harmonic_state = HarmonicState()
 _memory_writer = MemoryWriter()
+_memory_retriever = MemoryRetriever()
 _arc_compressor = ArcCompressor(writer=_memory_writer)
 
 
@@ -68,6 +72,7 @@ async def _run_group(
     turn_context: TurnContext,
     all_active_npc_ids: list[str],
     emotional_deltas: dict | None = None,
+    memory_bundles: dict[str, MemoryBundle] | None = None,
 ) -> tuple[list[AgentResponse], GenerateResult | None]:
     """
     Execute the full pipeline for one dispatch group.
@@ -80,6 +85,7 @@ async def _run_group(
         harmonic_state=_harmonic_state,
         emotional_deltas=emotional_deltas,
         fact_pool=_fact_pool,
+        memory_bundles=memory_bundles,
     )
 
     try:
@@ -192,6 +198,35 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
         for a in roster
     }
 
+    # Qdrant-backed memory retrieval: pull state_history per agent.
+    # Uses the player's input as the semantic query and each agent's
+    # current emotional state as the emotional query.
+    memory_bundles: dict[str, MemoryBundle] = {}
+    try:
+        if shared_embedding.is_loaded() and shared_emotional.is_loaded():
+            player_emb = shared_embedding.embed_one(turn_context.player_input)
+            semantic_query = player_emb.tolist()
+            for agent in roster:
+                agent_id = agent.agent_id
+                emo_query = _harmonic_state.get_semagram(agent_id)
+                delta = emotional_deltas.get(agent_id)
+                lambda_t = delta.lambda_t if delta else 0.5
+                bundle = await _memory_retriever.retrieve_for_agent(
+                    agent_id=agent_id,
+                    semantic_query=semantic_query,
+                    emotional_query=emo_query,
+                    lambda_t=lambda_t,
+                    current_game_ts=time.time(),
+                    referents=turn_context.active_npc_ids,
+                )
+                memory_bundles[agent_id] = bundle
+            logger.info(
+                "Tick %s: retrieved memories for %d agents",
+                tick_id, len(memory_bundles),
+            )
+    except Exception as exc:
+        logger.warning("Memory retrieval failed (non-fatal): %s", exc)
+
     # Step 3: Partition into dispatch groups
     groups = _scheduler.plan_dispatch(roster)
     logger.info(
@@ -201,7 +236,8 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
 
     # Step 4: Parallel execution — all groups run concurrently
     group_tasks = [
-        _run_group(group, turn_context, turn_context.active_npc_ids, emotional_deltas)
+        _run_group(group, turn_context, turn_context.active_npc_ids,
+                   emotional_deltas, memory_bundles)
         for group in groups
     ]
     group_results = await asyncio.gather(*group_tasks)

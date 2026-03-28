@@ -23,6 +23,7 @@ from shared.constants import ZERO_SEMAGRAM
 from progeny.src.agent_scheduler import ScheduledAgent
 from progeny.src.event_accumulator import AgentBuffer, TieredMemory, TurnContext
 from progeny.src.fact_pool import FactPool
+from progeny.src.memory_retrieval import MemoryBundle
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -88,6 +89,7 @@ def build_prompt(
     harmonic_state: "HarmonicState | None" = None,
     emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
     fact_pool: FactPool | None = None,
+    memory_bundles: dict[str, MemoryBundle] | None = None,
 ) -> list[dict[str, str]]:
     """
     Build the 2-message chat completion array for a dispatch group.
@@ -110,7 +112,7 @@ def build_prompt(
     # Message 2: data payload + instruction — rebuilt fresh every turn
     data_payload = _build_data_payload(
         turn_context, roster, all_active_npc_ids, harmonic_state, emotional_deltas,
-        fact_pool,
+        fact_pool, memory_bundles,
     )
     user_content = json.dumps(data_payload, indent=None) + "\n\n" + INSTRUCTION_PROMPT
 
@@ -127,12 +129,14 @@ def _build_data_payload(
     harmonic_state: "HarmonicState | None" = None,
     emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
     fact_pool: FactPool | None = None,
+    memory_bundles: dict[str, MemoryBundle] | None = None,
 ) -> dict[str, Any]:
     """Assemble the JSON data payload for message 2."""
     agents = []
     for scheduled in roster:
+        bundle = (memory_bundles or {}).get(scheduled.agent_id)
         agent_block = _build_agent_block(
-            scheduled, ctx, harmonic_state, emotional_deltas, fact_pool,
+            scheduled, ctx, harmonic_state, emotional_deltas, fact_pool, bundle,
         )
         agents.append(agent_block)
 
@@ -166,6 +170,7 @@ def _build_agent_block(
     harmonic_state: "HarmonicState | None" = None,
     emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
     fact_pool: FactPool | None = None,
+    memory_bundle: MemoryBundle | None = None,
 ) -> dict[str, Any]:
     """
     Build a single agent block at tier-appropriate granularity.
@@ -197,6 +202,16 @@ def _build_agent_block(
         fact_limit = TIER_FACT_LIMITS.get(scheduled.tier, 2)
         known_world = fact_pool.facts_for_prompt(agent_id, limit=fact_limit)
 
+    # State history from Qdrant retrieval (RAW anchors, MOD summaries, MAX refs)
+    state_history: dict[str, Any] = {}
+    if memory_bundle is not None:
+        if memory_bundle.recent:
+            state_history["recent"] = memory_bundle.recent
+        if memory_bundle.summaries:
+            state_history["summaries"] = memory_bundle.summaries
+        if memory_bundle.expandable_refs:
+            state_history["expandable_refs"] = memory_bundle.expandable_refs
+
     block: dict[str, Any] = {
         "agent_id": agent_id,
         "tier": scheduled.tier,
@@ -208,6 +223,8 @@ def _build_agent_block(
         "compressed_history": memory.compressed,
         "distant_memories": memory.keywords,
     }
+    if state_history:
+        block["state_history"] = state_history
 
     # Active task — persistent goal the agent is working toward
     if buf and buf.active_task:
