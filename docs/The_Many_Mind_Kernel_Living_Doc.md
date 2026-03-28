@@ -519,6 +519,108 @@ POLINT = polling interval in seconds for `request` event type.
 * Short decay rates = reactive personality. Long decay rates = grudge-holding personality. But now the *shape* of the buffer difference matters too — not just duration, but *which dimensions* are stable.
 * **The math IS the personality.** Decay rates, buffer geometry, snap thresholds, and λ gains define agent character — no separate personality rules needed.
 
+### Engine Preset Values as Dynamic Modulators (Not Set-Points)
+
+*Insight documented March 2026. Lineage: Ken Ong (theory), Oz/Warp (mechanism design).*
+
+Skyrim's Creation Engine assigns every NPC a set of preset behavioral values at spawn — Aggression, Confidence, Morality, Mood, Assistance. The initial temptation is to project these directly into 9D semagram space as emotional set-points (homeostasis targets). **This is wrong.** These values are not emotional primitives — they are derived behavioral attractors. They describe emergent behavioral patterns, not fundamental emotional dimensions.
+
+#### The Alignment Fallacy
+
+Think of D&D alignment: "Chaotic Good" or "Neutral Evil" aren't primitive psychological dimensions — they're shorthand labels for behavioral patterns that emerge from deeper value structures interacting with context. Similarly, Skyrim's Aggression=2 doesn't mean "resting at angry." It means the NPC's behavioral *response dynamics* to threat signals are tuned to amplify and sustain aggression.
+
+Whining isn't a primitive — it's a fallback response to helpless need in the context of usual need-fillers being absent. Bravery isn't a state — it's a damping coefficient on the fear signal. These values describe the *transfer function* of the NPC's behavioral feedback loops, not positions in emotional space.
+
+#### The Five Values as Dynamic Modulators
+
+Each engine preset value maps to a specific dynamic property of the harmonic buffer system — a gain, a damping factor, a threshold, or a bias — not a coordinate:
+
+**Aggression** (0=Unaggressive → 3=Frenzied) → **Gain multiplier on threat-response axes.**
+High aggression doesn't mean "resting at angry." It means the anger and excitement axes *amplify faster* when provoked and *decay slower* after the stimulus passes. The gain is asymmetric: fast rise, slow fall. Frenzied NPCs have a ratchet-like anger dynamic — easy to wind up, slow to wind down.
+* Modulates: per-axis α-rate on anger, excitement, fear→excitement conversion
+* Fast buffer: gain on anger/excitement axes scaled by `1 + aggression * k_agg`
+* Slow buffer: decay on anger/excitement axes attenuated by `1 - aggression * k_agg_persist`
+
+**Confidence** (0=Cowardly → 4=Foolhardy) → **Damping factor on fear/uncertainty axes.**
+Foolhardy isn't "never scared" — it means the fear signal gets attenuated before it reaches the decision layer. The raw fear delta still arrives from the emotional projection pipeline, but its effective magnitude is scaled down by the confidence damping coefficient. A Cowardly NPC feels full fear. A Foolhardy NPC feels a muted echo.
+* Modulates: effective delta magnitude on fear and safety axes
+* Applied as: `effective_fear_delta = raw_fear_delta * (1 - confidence * k_conf_damp)`
+* At Confidence=4 (Foolhardy): fear deltas are attenuated to ~20% of raw magnitude
+* Does NOT suppress fear *storage* — the raw delta still writes to Qdrant with full emotional vector. Only the harmonic buffer update sees the damped value. The memory remembers the real fear; the mind just doesn't dwell on it.
+
+**Morality** (0=Any crime → 3=No crime) → **Threshold gate on action selection.**
+Morality is not emotional at all. It doesn't modulate how the NPC *feels* — it gates what the NPC *does* with those feelings. A Morality=0 NPC and a Morality=3 NPC can reach identical emotional states (rage, desperation, greed), but the action space available to resolve those states differs. Morality is a filter on `response_expander.py`'s action selection, not a parameter of the harmonic buffers.
+* Modulates: action filtering in response expansion, NOT buffer dynamics
+* Implementation: when the LLM proposes actions, `response_expander.py` filters against the NPC's morality threshold. Steal, trespass, and attack-innocent commands require morality ≤ their crime level.
+* The LLM still *deliberates* about immoral options (they appear in the prompt context). The gate is at the output, not the input. An NPC with Morality=3 might *want* to steal the potion — but won't.
+
+**Mood** (0-7: Neutral/Anger/Fear/Happy/Sad/Surprised/Puzzled/Disgusted) → **Ambient bias on the emotional baseline.**
+Mood is the closest to a true set-point — but only on a single axis. It biases the *resting state* of one emotional dimension toward a non-zero value. An NPC with Mood=Happy has a positive bias on the joy axis that all three buffers drift toward during low-curvature periods. The bias is weak (shouldn't override strong emotional events) but persistent (always nudging back).
+* Modulates: EMA target on the mood-corresponding axis (not zero, but `mood_bias[axis]`)
+* Update rule for the biased axis: `buffer_t[axis] = α_t · new_semagram[axis] + (1 - α_t) · (buffer_t[axis] + mood_pull * (mood_bias[axis] - buffer_t[axis]))`
+* `mood_pull` is small (~0.01-0.05) — a gentle ambient drift, not a hard anchor
+* Maps Skyrim's integer mood enum to the corresponding semagram axis: Anger→anger, Fear→fear, Happy→joy, Sad→sadness, Disgusted→disgust, etc.
+* Neutral (0) = no bias on any axis = the default zero-target behavior
+
+**Assistance** (0=Nobody → 2=Friends and allies) → **Social binding strength / emotional bleed coefficient.**
+Assistance modulates how much nearby agents' emotional states influence this NPC's deltas. An NPC with Assistance=2 (defends friends and allies) has a higher emotional bleed coefficient — when allies experience high-curvature events (combat, fear, anger), a fraction of that curvature propagates into this NPC's buffers even if the NPC didn't directly experience the stimulus. An NPC with Assistance=0 is emotionally isolated — other agents' states don't bleed in.
+* Modulates: cross-agent emotional coupling coefficient
+* When computing deltas for agent A, if ally agent B has high curvature: `bleed_delta = B.curvature * assistance_coupling * (B.fast_buffer - A.fast_buffer)`
+* `assistance_coupling` scales with the Assistance value (0 = zero bleed, 2 = full coupling)
+* This is how a squad develops coordinated emotional responses — not because they share a hive-mind, but because emotional bleed through social bonds creates correlated buffer trajectories
+
+#### The Joker Example — Emergent Behavioral Profiles
+
+Consider an NPC with: Confidence=4 (Foolhardy), Aggression=3 (Frenzied), Morality=0 (Any crime), Mood=3 (Happy).
+
+The dynamic modulators produce:
+* Fear signals attenuated to ~20% → threat events barely register emotionally
+* Anger/excitement gain cranked to maximum → every stimulus amplifies into excitement
+* No moral filtering on actions → full action space available
+* Ambient joy bias → buffers drift toward cheerful during calm periods
+
+The emergent behavior: a happy psychopath. Threat situations that would terrify other NPCs get converted into excitement through the high-gain anger/excitement path and damped fear channel. The NPC approaches danger with enthusiasm. Combat arcs stored in Qdrant carry excitement-dominant emotional vectors, not fear-dominant ones. On retrieval, the NPC recalls combat as *fun*. The Deliberation→Habituation→Instinct pipeline locks this in: after enough joyful combat arcs, the NPC's instinct layer retrieves "combat = exciting" patterns at low λ.
+
+Nobody scripted "psychopath." The gain settings produced one.
+
+Conversely: Confidence=0 (Cowardly), Aggression=0 (Unaggressive), Morality=3 (No crime), Mood=4 (Sad), Assistance=0 (Nobody). This NPC feels full fear, has no anger gain, can't act immorally, drifts toward sadness, and gets no emotional support from allies. The system produces a withdrawn, frightened loner — not from a personality rule, but from the dynamics.
+
+#### Interaction with Zero-Init
+
+The Zero-Init Pattern (see above) states that all agent state defaults to zero. This still holds for emotional *position* — the 9D semagram starts at the origin. But the *dynamics that govern how that state evolves* are immediately parameterized by the engine values from `addnpc`.
+
+Zero-Init becomes: "Born at emotional zero, but with your own physics." Two NPCs receiving identical first events will diverge immediately — not because they started at different positions, but because the same stimulus propagates differently through their differently-tuned feedback dynamics. Lydia's Confidence=3 damping means her fear buffer barely moves; a Cowardly merchant's fear buffer spikes hard. Same input, different transfer function, divergent trajectories from tick 1.
+
+#### Wire Protocol Gap and Implementation
+
+**Current state**: The `addnpc` event (43+ fields) carries skills, equipment, stats, factions, and class — but NOT the 5 behavioral actor values. These values exist on every NPC in the Creation Engine but aren't included in the SKSE plugin's registration payload.
+
+**Options to acquire**:
+1. **Papyrus script at registration** — Add a small Papyrus script that reads `GetActorValue("Aggression")` etc. on NPC load and fires a custom ModEvent or appends to the `addnpc` payload. Requires a companion `.psc` script similar to `MMKSetBehavior.psc`. Cleanest approach — one-time read per NPC, shipped with the NPC metadata.
+2. **Separate HTTP endpoint** — A Papyrus script that periodically reads and POSTs the 5 values for active NPCs. More complex, but allows detecting runtime changes (e.g., if a quest script modifies an NPC's Aggression).
+3. **Default lookup table** — Hardcode known values for named NPCs from the Creation Kit data. Works for vanilla NPCs but breaks for mod-added NPCs. Fragile, not recommended.
+
+**Recommended**: Option 1 (Papyrus read at registration) with Option 2 as a future enhancement for detecting quest-driven changes. The values rarely change at runtime in vanilla Skyrim — they're effectively static personality parameters.
+
+**Progeny integration**: On receiving the 5 values (via `addnpc` extension or separate event), `harmonic_buffer.py` initializes per-agent dynamic modulator coefficients:
+```
+agent_dynamics = {
+    "aggression_gain": normalize(aggression, 0, 3),      # 0.0-1.0
+    "confidence_damp": normalize(confidence, 0, 4),       # 0.0-1.0
+    "morality_threshold": morality,                        # 0-3 integer
+    "mood_axis": MOOD_TO_AXIS[mood],                       # axis index or None
+    "mood_pull": 0.03 if mood != 0 else 0.0,              # ambient drift strength
+    "assistance_coupling": normalize(assistance, 0, 2),    # 0.0-1.0
+}
+```
+These parameterize the per-tick buffer update without changing the core EMA math. Agents without engine values (fallback) get all-zero modulators = the current uniform-dynamics behavior.
+
+#### Why This Is Emergence, Not Control
+
+The 5 engine values don't tell the NPC what to feel or how to act. They tune the *physics* of the emotional manifold — how signals propagate, amplify, attenuate, and couple. Behavior emerges from the interaction of these dynamics with the actual event stream. The same Frenzied NPC in a peaceful village and a war zone produces radically different behavior from the same gain settings, because the input stream is different. The dynamics are the instrument; the world plays the music.
+
+This extends the Tuning Knobs Model (see Fast-Twitch / Slow-Twitch Decoupling) into a bidirectional loop: the engine's preset values parameterize the mind's dynamics (input), and the mind's deliberated actor_value_deltas tune the engine's behavioral posture (output). The NPC's personality shapes how it processes the world, and the world shapes the NPC's personality through accumulated experience. The engine values are the initial conditions; the trajectory is emergent.
+
 ### Dual-Vector Architecture
 
 Each memory point stores TWO named vectors in Qdrant:
