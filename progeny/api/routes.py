@@ -27,6 +27,8 @@ from shared.schemas import (
     TickPackage,
     TurnResponse,
 )
+from shared.constants import COLLECTION_NPC_MEMORIES
+from shared import qdrant_wrapper
 from progeny.src.event_accumulator import EventAccumulator, TurnContext
 from progeny.src.agent_scheduler import AgentScheduler, DispatchGroup
 from progeny.src.fact_pool import FactPool
@@ -37,6 +39,9 @@ from progeny.src import response_expander
 from progeny.src.memory_compressor import slide_window
 from progeny.src import emotional_delta
 from progeny.src.harmonic_buffer import HarmonicState
+from progeny.src.memory_writer import MemoryWriter
+from progeny.src.compression import ArcCompressor, DEFAULT_SNAP_THRESHOLD
+from progeny.src import qdrant_client as progeny_qdrant
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +55,8 @@ _fact_pool = FactPool()
 _accumulator = EventAccumulator(fact_pool=_fact_pool)
 _scheduler = AgentScheduler()
 _harmonic_state = HarmonicState()
+_memory_writer = MemoryWriter()
+_arc_compressor = ArcCompressor(writer=_memory_writer)
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +158,25 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
     # Emotional pipeline: inbound text → 9d projection → update harmonic buffers
     emotional_delta.process_inbound(turn_context, _harmonic_state)
 
+    # Persist inbound events to Qdrant via enrichment wrapper (RAW writes)
+    # Each event text gets embedded, projected to 9d, and stored with dual vectors.
+    # Non-blocking: failures are logged but don't stop the turn.
+    try:
+        qdrant_cli = progeny_qdrant.get_client()
+        for agent_id, buf in turn_context.agent_buffers.items():
+            for event in buf.events:
+                if event.raw_data:
+                    await qdrant_wrapper.ingest(
+                        client=qdrant_cli,
+                        text=event.raw_data,
+                        collection=COLLECTION_NPC_MEMORIES,
+                        agent_id=agent_id,
+                        game_ts=event.game_ts,
+                        event_type=event.event_type,
+                    )
+    except Exception as exc:
+        logger.warning("RAW write pass failed (non-fatal): %s", exc)
+
     # Step 2: Schedule agents
     roster = _scheduler.schedule(turn_context.active_npc_ids)
     if not roster:
@@ -188,9 +214,32 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
         all_gen_results.append(gen_result)
 
     # Record outputs into dialogue history (behavior adoption)
+    # Also write utterances to Qdrant via enrichment wrapper and set utterance_key
+    # for keys-over-wire: Falcon reads text by key instead of inline.
+    try:
+        qdrant_cli = progeny_qdrant.get_client()
+    except RuntimeError:
+        qdrant_cli = None
+
     for resp in all_responses:
         if resp.utterance:
             _accumulator.record_agent_output(resp.agent_id, resp.utterance)
+            # Write utterance to Qdrant, set utterance_key for Falcon
+            if qdrant_cli is not None:
+                try:
+                    key = await qdrant_wrapper.ingest(
+                        client=qdrant_cli,
+                        text=resp.utterance,
+                        collection=COLLECTION_NPC_MEMORIES,
+                        agent_id=resp.agent_id,
+                        game_ts=time.time(),  # wall time — no game_ts for LLM output
+                        event_type="response",
+                    )
+                    if key:
+                        resp.utterance_key = key
+                except Exception as exc:
+                    logger.warning("Utterance write failed for %s (non-fatal): %s", resp.agent_id, exc)
+
         _scheduler.record_action(resp.agent_id)
         # Extract SetCurrentTask actions → persist as active_task
         for action in resp.actions:
@@ -205,7 +254,23 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
                     )
 
     # Emotional adoption: agent's own words shift its state (bidirectional pipeline)
-    emotional_delta.process_outbound(all_responses, _harmonic_state)
+    outbound_deltas = emotional_delta.process_outbound(all_responses, _harmonic_state)
+
+    # Arc compression: check snap threshold for each agent after emotional adoption.
+    # If snap exceeds threshold, generate a MOD-tier arc summary from recent RAW points.
+    for agent_id, delta in outbound_deltas.items():
+        if _arc_compressor.should_generate_arc(delta.snap):
+            try:
+                await _arc_compressor.generate_arc_summary(
+                    agent_id=agent_id,
+                    arc_start_ts=0.0,  # TODO: track arc start per agent
+                    arc_end_ts=delta.semagram[0] if delta.semagram else 0.0,
+                    semantic_vector=delta.semagram,  # 9d used as placeholder
+                    emotional_vector=delta.semagram,
+                    game_ts=time.time(),
+                )
+            except Exception as exc:
+                logger.warning("Arc compression failed for %s (non-fatal): %s", agent_id, exc)
 
     # Slide memory windows — compress overflow after new entries recorded
     for agent_id in turn_context.active_npc_ids:
