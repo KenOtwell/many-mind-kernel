@@ -10,8 +10,8 @@ This plan was refined through deep conversation covering architecture, emotional
 * **FULL HerikaServer REPLACEMENT** — NOT a shim. Falcon replaces ALL of the PHP/Apache server. Only in-game CHIM mod files remain: AIAgent.dll (SKSE plugin), AIAgent.esp, Papyrus .pex scripts, AIAgent.ini (~10 files total).
 * **SKSE plugin source is closed** — C++ DLL not published. Wire protocol fully known from the open-source PHP server that receives its output (`comm.php`, `processor/comm.php`, `main.php`). Papyrus .pex scripts decompilable with Champollion if needed. Also check `abeiro/aiagent-aiff` on GitHub for earlier open-source Papyrus.
 * **AIAgent.ini** is the only config change: point `SERVER`/`PORT`/`PATH` at our FastAPI endpoint. Format: `SERVER=ip PORT=port PATH=/comm.php POLINT=1`
-* **DO NOT** import from thoughtstream-ai, garden, or semantic_memory_management. Clean standalone package. Existing `qdrant_memory_store.py` and `thoughtstream_memory.py` are reference only — study for patterns, don't depend.
-* Qdrant runs natively on Windows at `C:\Tools\qdrant\qdrant.exe` (NOT Docker). Ports 6333 (REST) / 6334 (gRPC). 12 existing collections documented below — wrapper MUST read/write without migration.
+* **Clean standalone package.** No external project dependencies.
+* Qdrant runs natively on Windows (NOT Docker). Ports 6333 (REST) / 6334 (gRPC). Wrapper MUST read/write without migration.
 * **GPU fully committed to VR + Virtual Desktop Streamer (Quest 3).** ALL Python/embedding on Gaming PC must be CPU-only.
 * **Emotional harmonics basis vectors ARE the Qdrant vector keys** — enables mood-congruent memory retrieval via vector similarity. This is the core cognitive innovation. See Emotional Architecture section.
 * **Study HerikaServer source for protocol details**: `abeiro/HerikaServer` branch `aiagent`. Key files: `main.php`, `processor/comm.php`, `lib/data_functions.php` (273KB context-building functions). Borrow what works, then we're off their update chain. Leave acknowledgement of the upgrade.
@@ -257,7 +257,7 @@ When NPCs are in scripted quest sequences, the Creation Engine's quest AI owns t
 
 **GitHub**: https://github.com/KenOtwell/many-mind-kernel (public, MIT). Falcon + Progeny code, shared schemas, **400 tests passing**. Both Falcon (StealthVI) and Progeny (Beelink) pull from this repo.
 
-**Qdrant Instance**: `C:\Tools\qdrant\qdrant.exe` — ports 6333 (REST) / 6334 (gRPC), bound to `0.0.0.0` (LAN-accessible). Config: `C:\Tools\qdrant\config.yaml`. Progeny (Beelink at `192.168.0.220`) confirmed connecting to `192.168.0.13:6333`.
+**Qdrant Instance**: Native Windows binary, ports 6333 (REST) / 6334 (gRPC), bound to `0.0.0.0` (LAN-accessible). Progeny connects over LAN.
 
 **Shared Enrichment Layer** (committed, in `shared/`):
 * `emotional.py` — 384d → 9d semagram projection. Basis loading, single/batch projection, residual computation. Used by both Falcon and Progeny.
@@ -296,24 +296,14 @@ When NPCs are in scripted quest sequences, the Creation Engine's quest AI owns t
 * Key server files verified: `main.php` (wire protocol parser), `comm.php` (legacy entry point), `processor/` (response formatting)
 * **Integration decision**: Use ChIM’s SKSE DLL + Papyrus scripts as-is for game-side I/O. Replace ONLY the PHP backend with Falcon/Progeny Python services. The cognitive architecture is the innovation; game integration is plumbing. ChIM thinks it’s talking to its PHP server — it’s actually talking to Falcon.
 
-**Network Map** (confirmed March 2026):
-* StealthVI/Falcon: `192.168.0.13` (wired) — Qdrant, Falcon service, Skyrim VR
-* Progeny/Beelink: `192.168.0.220` (wired) / `192.168.0.231` (WiFi 6G) — Progeny service, Ollama
-* Quest-3: `192.168.0.41` (WiFi 6G) — VR headset via Virtual Desktop
+**Network Map**:
+* Gaming PC (Falcon) — wired LAN. Qdrant, Falcon service, Skyrim (SE or VR)
+* Beelink (Progeny) — wired LAN. Progeny service, Ollama
+* VR headset — WiFi via Virtual Desktop (VR mode only)
 
-**Existing Collections** (12 pre-MMK):
-* `garden_archive` — 1,148,827 pts, dim=384 (speaker, witnesses, content_hash, emotional_valence, concepts, source_file, document_type)
-* `trinity_archive` — 43,409 pts, dim=384 (conversation_thread, author, message, emotional_salience, timestamp, was_filtered)
-* `complete_codebase` — 300 pts, dim=384 (file_path, chunk_type, name, content, calls, patterns, tags)
-* `project_docs` — 39 pts, dim=384 (content, file_path, project, chunk_type, layer, tags)
-* `fractal_consciousness` — 13 pts, dim=768 (content + content_l1/l2/l3, current_tier, owner_id, privacy_level, resonance_score, emotion, wobble_amplitude, compressed_10/50/100, semantic_topics)
-* `garden_emotions` / `garden_focus` — 10 each, dim=1536 (experiencer, emotion, focus_description, intensity, valence, arousal, focus_tags)
-* `test_pubsub_integration` — 5 pts, dim=768
-* `test_reciprocity` — 3 pts, dim=384
-* `fractal_memories` — 1 pt, dim=1536 (text, author, emotion, timestamp)
-* `access_contexts` / `certainty_timelines` — 0 pts, dim=1536 (schema stubs)
+Configure IPs in `shared/config.py` via environment variables (`QDRANT_HOST`, `PROGENY_HOST`, etc.).
 
-**Vector Dimensions in Play**: 384 (all-MiniLM-L6-v2), 768 (sentence-transformers), 1536 (OpenAI-compatible)
+**Vector Dimensions in Play**: 384 (all-MiniLM-L6-v2)
 
 **CHIM/HerikaServer** (what we are REPLACING — GitHub: abeiro/HerikaServer):
 * This entire PHP/Apache stack is replaced by our FastAPI service
@@ -324,11 +314,7 @@ When NPCs are in scripted quest sequences, the Creation Engine's quest AI owns t
 * Oghma Infinium: 1900+ lore topics — imported once into Qdrant as static reference data
 * TTS/STT: Architecture documented — see Audio Pipeline section. STT already handled via `inputtext_s`. TTS owned by Falcon (local xVASynth/MeloTTS/Kokoro). 16 TTS + 3 STT + 4 ITT backends available from CHIM's ecosystem.
 
-**Existing Wrappers** (reference only, in `thoughtstream-ai/src/garden/`):
-* `qdrant_memory_store.py` — privacy-aware CRUD, 4-tier compression, caching, pub/sub
-* `thoughtstream_memory.py` — emotional thread tracing, wobble sync, resonance amplification
-
-**Rich Modlist Deployment Notes** (Panda's Sovngarde / large Wabbajack lists):
+**Rich Modlist
 
 The system was initially designed for vanilla + CHIM. A rich behavior modlist changes the event landscape substantially — and entirely in our favor.
 
@@ -2122,7 +2108,7 @@ Confirmed capabilities from `ggml_vulkan` output:
 **`llm_client.py` backend**: Add `llama_server` adapter alongside `ollama`. The modified llama-server exposes D-RoPE as a runtime option. Configuration in `shared/config.py`:
 ```
 llm_backend: "llama_server"
-llama_server_url: "http://192.168.0.220:8080"  # Beelink (Progeny) llama-server
+llama_server_url: "http://<progeny-host>:8080"  # Beelink (Progeny) llama-server
 drope_mode: "basic"  # "basic" | "extended" | "boundary_reset"
 drope_boundary_tokens: ["\n", "Step ", "Therefore"]  # For extended mode
 ```

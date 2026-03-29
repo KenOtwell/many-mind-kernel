@@ -118,7 +118,7 @@ class TestEnsureCollections:
     async def test_does_not_touch_preexisting_collections(self, qdrant):
         """A pre-existing alien collection should survive untouched."""
         await qdrant.create_collection(
-            "garden_archive",
+            "preexisting_collection",
             vectors_config={"semantic": __import__("qdrant_client.models", fromlist=["VectorParams"]).VectorParams(
                 size=384,
                 distance=__import__("qdrant_client.models", fromlist=["Distance"]).Distance.COSINE,
@@ -126,7 +126,7 @@ class TestEnsureCollections:
         )
         await ensure_collections()
         names = {c.name for c in (await qdrant.get_collections()).collections}
-        assert "garden_archive" in names  # still there, unmolested
+        assert "preexisting_collection" in names  # still there, unmolested
 
 
 # ---------------------------------------------------------------------------

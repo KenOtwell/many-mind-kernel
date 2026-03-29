@@ -114,8 +114,8 @@ async def ensure_collections() -> None:
     """Create required MMK collections if they don't already exist.
 
     Safe to call on startup even when the Gaming PC Qdrant already holds
-    data from prior runs (garden_archive, trinity_archive, etc.). This
-    function NEVER modifies or migrates existing collections.
+    data from prior runs. This function NEVER modifies or migrates
+    existing collections.
 
     Collections created:
       skyrim_npc_memories — dual-vector (semantic 384d + emotional 9d)

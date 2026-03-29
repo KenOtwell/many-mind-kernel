@@ -18,7 +18,7 @@ Populates two collections:
 
 Run from repo root on the Beelink:
     python scripts/import_seed_data.py
-    python scripts/import_seed_data.py --qdrant-host 192.168.0.13
+    python scripts/import_seed_data.py --qdrant-host <gaming-pc-ip>
 
 Defaults QDRANT_HOST env → 127.0.0.1. Safe to re-run: all upserts use
 deterministic UUIDs keyed on slug/topic. Re-running overwrites with the
