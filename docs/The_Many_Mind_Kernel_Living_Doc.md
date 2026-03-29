@@ -265,9 +265,10 @@ When NPCs are in scripted quest sequences, the Creation Engine's quest AI owns t
 * `qdrant_wrapper.py` — **The enrichment gate.** `ingest()`: text in → embed (384d) → project (9d) → store dual-vector point → return key. `read_text()`: key-based point lookup. Both services call the same API.
 * `schemas.py` — `AgentResponse.utterance_key`: Progeny can return a Qdrant key instead of inline text. Falcon resolves via `read_text()`. Falls back to inline `utterance` (backward compat).
 
-**Falcon Enrichment Wiring** (committed):
-* `server.py` — Startup loads embedding model + emotional bases + initializes AsyncQdrantClient (localhost).
-* `routes.py` — `_resolve_utterance_keys()`: when Progeny returns `utterance_key`, Falcon reads text from Qdrant by key before wire formatting. Session events now forwarded to tick accumulator for Progeny visibility.
+**Falcon Wiring** (committed):
+* `server.py` — Startup loads embedding model + emotional bases + initializes AsyncQdrantClient (localhost) + connects WebSocket to Progeny.
+* `progeny_protocol.py` — Persistent WebSocket client (`ws://progeny:port/ws`). `send_tick()` is fire-and-forget. Background receive loop handles `turn_response` frames asynchronously. Auto-reconnect with exponential backoff (1s→30s). Replaces the previous blocking HTTP `send_package()` pattern.
+* `routes.py` — `_process_tick()` sends tick via WebSocket (non-blocking). `_handle_turn_response()` callback resolves `utterance_key` from Qdrant, formats to wire, enqueues for SKSE. Session events forwarded to tick accumulator for Progeny visibility.
 * Response queue bounded at `maxlen=64`.
 
 **Progeny Qdrant Modules** (committed, in `progeny/src/`):
