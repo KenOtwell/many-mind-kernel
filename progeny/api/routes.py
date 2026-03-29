@@ -18,7 +18,9 @@ import time
 from typing import Union
 from uuid import uuid4
 
-from fastapi import APIRouter
+import json
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from shared.schemas import (
     AckResponse,
@@ -235,6 +237,57 @@ async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
         llm_timings=timings,
     )
 
+
+
+# ---------------------------------------------------------------------------
+# WebSocket channel — persistent Falcon↔Progeny link
+# ---------------------------------------------------------------------------
+
+@router.websocket("/ws")
+async def ws_channel(websocket: WebSocket) -> None:
+    """Persistent bidirectional channel for Falcon tick delivery and response return.
+
+    Falcon sends tick frames, Progeny processes through the same ingest()
+    pipeline and sends response frames back when ready. No HTTP round-trip
+    per tick — events and responses flow independently.
+
+    Frame format (JSON):
+        Falcon→Progeny:  {"type": "tick", "data": <TickPackage>}
+        Progeny→Falcon:  {"type": "ack", "data": <AckResponse>}
+                          {"type": "turn_response", "data": <TurnResponse>}
+    """
+    await websocket.accept()
+    logger.info("Falcon WebSocket connected")
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            frame = json.loads(raw)
+
+            if frame.get("type") == "heartbeat":
+                await websocket.send_text(json.dumps({"type": "heartbeat"}))
+                continue
+
+            if frame.get("type") != "tick":
+                logger.warning("Unknown WS frame type: %s", frame.get("type"))
+                continue
+
+            package = TickPackage.model_validate(frame["data"])
+            result = await ingest(package)
+
+            if isinstance(result, TurnResponse):
+                await websocket.send_text(json.dumps({
+                    "type": "turn_response",
+                    "data": result.model_dump(mode="json"),
+                }))
+            else:
+                await websocket.send_text(json.dumps({
+                    "type": "ack",
+                    "data": result.model_dump(mode="json"),
+                }))
+    except WebSocketDisconnect:
+        logger.info("Falcon WebSocket disconnected")
+    except Exception:
+        logger.exception("WebSocket error")
 
 
 @router.get("/health")

@@ -13,8 +13,11 @@ from fastapi import FastAPI
 
 from qdrant_client import AsyncQdrantClient
 
-from falcon.api.routes import router, startup as routes_startup, shutdown as routes_shutdown
-from falcon.src.progeny_protocol import close as close_progeny_client
+from falcon.api.routes import (
+    router, startup as routes_startup, shutdown as routes_shutdown,
+    _handle_turn_response,
+)
+from falcon.src import progeny_protocol
 from shared import embedding, emotional
 from shared.config import settings
 
@@ -35,7 +38,7 @@ async def lifespan(app: FastAPI):
     global qdrant_client
     logger.info("Falcon starting — listening on %s:%d%s",
                 settings.falcon.host, settings.falcon.port, settings.falcon.comm_path)
-    logger.info("Progeny endpoint: %s/ingest", settings.progeny.base_url)
+    logger.info("Progeny WebSocket: %s", settings.progeny.ws_url)
     # Load enrichment pipeline (CPU, ~2s total)
     embedding.load_model()
     emotional.load_bases()
@@ -47,9 +50,11 @@ async def lifespan(app: FastAPI):
     logger.info("Qdrant client initialized → %s:%d",
                 settings.qdrant.host, settings.qdrant.rest_port)
     await routes_startup()
+    # Connect to Progeny via WebSocket (auto-reconnects on failure)
+    await progeny_protocol.connect(on_turn_response=_handle_turn_response)
     yield
     await routes_shutdown()
-    await close_progeny_client()
+    await progeny_protocol.close()
     if qdrant_client:
         await qdrant_client.close()
     logger.info("Falcon shut down")

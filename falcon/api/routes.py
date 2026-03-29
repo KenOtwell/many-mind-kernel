@@ -16,7 +16,7 @@ import base64
 from fastapi import APIRouter, Request, Response
 
 from falcon.src.wire_protocol import parse_event, format_turn_response
-from falcon.src.progeny_protocol import send_package
+from falcon.src import progeny_protocol
 from falcon.src.event_parsers import parse_typed_data
 from falcon.src.tick_accumulator import TickAccumulator
 from shared.schemas import TypedEvent, TickPackage, TurnResponse
@@ -192,32 +192,40 @@ async def _decode_skse_request(request: Request) -> str:
 # ---------------------------------------------------------------------------
 
 async def _process_tick(package: TickPackage) -> None:
-    """Send TickPackage to Progeny and queue any TurnResponse for SKSE polling.
+    """Send TickPackage to Progeny via WebSocket. Non-blocking, fire-and-forget.
 
-    Outbound path: if Progeny returns utterance_key (Qdrant point ID)
-    instead of inline utterance text, Falcon reads the text from Qdrant
-    by key before formatting to wire. Falls back to inline utterance
-    for backward compat (stub mode, tests).
+    Response handling happens asynchronously in _handle_turn_response(),
+    called by the WebSocket receive loop when Progeny delivers results.
+    The tick loop never stalls.
     """
     try:
-        result = await send_package(package)
-
-        if result and isinstance(result, TurnResponse) and result.responses:
-            # Resolve any utterance_key references to inline text
-            await _resolve_utterance_keys(result)
-
-            wire_output = format_turn_response(
-                [r.model_dump() for r in result.responses]
-            )
-            if wire_output:
-                _response_queue.append(wire_output)
-                logger.info("Turn response queued (%d agents, %d chars)",
-                            len(result.responses), len(wire_output))
-        else:
-            logger.debug("No turn response from Progeny (or empty)")
-
+        await progeny_protocol.send_tick(package)
     except Exception:
-        logger.exception("Failed to process tick package")
+        logger.exception("Failed to send tick package")
+
+
+async def _handle_turn_response(turn: TurnResponse) -> None:
+    """Callback for WebSocket receive loop: process a completed TurnResponse.
+
+    Resolves utterance_key references to inline text via Qdrant, formats
+    to CHIM wire protocol, and enqueues for SKSE polling.
+    """
+    if not turn.responses:
+        logger.debug("Empty turn response from Progeny")
+        return
+
+    try:
+        await _resolve_utterance_keys(turn)
+
+        wire_output = format_turn_response(
+            [r.model_dump() for r in turn.responses]
+        )
+        if wire_output:
+            _response_queue.append(wire_output)
+            logger.info("Turn response queued (%d agents, %d chars)",
+                        len(turn.responses), len(wire_output))
+    except Exception:
+        logger.exception("Failed to handle turn response")
 
 
 async def _resolve_utterance_keys(turn: TurnResponse) -> None:

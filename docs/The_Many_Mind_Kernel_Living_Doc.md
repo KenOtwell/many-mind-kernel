@@ -1008,7 +1008,7 @@ The system has no "combat mode" flag. Curvature and snap — the 1st and 2nd der
 * SKSE polls via `request` events at POLINT intervals (default 1s). Falcon handles `request` locally from its response queue — never involves Progeny for polling.
 * Falcon's tick interval (~1-3 seconds) is independent of POLINT — it ships typed event packages to Progeny on its own cadence.
 * Progeny returns response bundles when ready (LLM inference may span multiple Falcon ticks). Falcon enqueues and serves on next `request` poll.
-* **Current implementation gap**: Falcon's `send_package()` blocks the tick loop awaiting Progeny's HTTP response. During LLM generation (3-6s), no ticks fire and events accumulate silently. Target architecture: fire-and-forget delivery + async response callback. See Pipelined Prompt Construction below.
+* **Resolved (March 2026)**: Falcon↔Progeny communication uses a persistent WebSocket (`ws://progeny:port/ws`). `send_tick()` is fire-and-forget — the tick loop never blocks. Responses arrive asynchronously via the WebSocket receive loop. Auto-reconnects with exponential backoff on disconnect (NPCs continue on engine AI). Replaces the previous blocking HTTP `send_package()` pattern.
 
 **Concrete async handoff (ambush example):**
 * Tick 1: Ambush. SKSE sends `info` events. Falcon structurally parses them, accumulates in buffer.
@@ -1062,10 +1062,11 @@ Stage C (CPU, on completion): Parse response N, write utterance to Qdrant via wr
 * The 1-2 seconds of prompt construction overhead is *eliminated* from the critical path — it runs in parallel with the previous generation
 * Over a 10-minute play session (~100-200 turns), this saves 2-6 minutes of cumulative latency
 
-**What Falcon must change:**
-* **Fire-and-forget tick delivery.** `send_package()` ships the TickPackage and returns immediately (non-blocking). The tick loop never stalls.
-* **Async response callback.** Progeny delivers results to Falcon via a POST to a Falcon callback endpoint (e.g., `POST /response`) or Falcon polls a Progeny response queue. Either way, the tick loop and response delivery are decoupled.
-* Events flow continuously from Falcon to Progeny on tick cadence. Responses flow back asynchronously when ready. The two streams are independent.
+**What Falcon changed (implemented):**
+* **Persistent WebSocket channel.** `progeny_protocol.py` maintains a WebSocket connection to Progeny's `/ws` endpoint. `send_tick()` sends a JSON frame and returns immediately. The tick loop never stalls.
+* **Async receive loop.** A background task reads response frames from Progeny. On `turn_response`: resolves utterance keys from Qdrant, formats to CHIM wire protocol, enqueues for SKSE polling. Fully decoupled from the tick cadence.
+* **Auto-reconnect.** On disconnect, exponential backoff (1s→30s) retries the connection. NPCs continue on engine AI during disconnection. No manual intervention needed.
+* Events flow continuously from Falcon to Progeny. Responses flow back asynchronously when ready. The two streams are independent over the same persistent connection.
 
 **What Progeny must change:**
 * **Separate the context manager from the LLM executor.** Two concurrent subsystems:
