@@ -265,9 +265,10 @@ When NPCs are in scripted quest sequences, the Creation Engine's quest AI owns t
 * `qdrant_wrapper.py` — **The enrichment gate.** `ingest()`: text in → embed (384d) → project (9d) → store dual-vector point → return key. `read_text()`: key-based point lookup. Both services call the same API.
 * `schemas.py` — `AgentResponse.utterance_key`: Progeny can return a Qdrant key instead of inline text. Falcon resolves via `read_text()`. Falls back to inline `utterance` (backward compat).
 
-**Falcon Enrichment Wiring** (committed):
-* `server.py` — Startup loads embedding model + emotional bases + initializes AsyncQdrantClient (localhost).
-* `routes.py` — `_resolve_utterance_keys()`: when Progeny returns `utterance_key`, Falcon reads text from Qdrant by key before wire formatting. Session events now forwarded to tick accumulator for Progeny visibility.
+**Falcon Wiring** (committed):
+* `server.py` — Startup loads embedding model + emotional bases + initializes AsyncQdrantClient (localhost) + connects WebSocket to Progeny.
+* `progeny_protocol.py` — Persistent WebSocket client (`ws://progeny:port/ws`). `send_tick()` is fire-and-forget. Background receive loop handles `turn_response` frames asynchronously. Auto-reconnect with exponential backoff (1s→30s). Replaces the previous blocking HTTP `send_package()` pattern.
+* `routes.py` — `_process_tick()` sends tick via WebSocket (non-blocking). `_handle_turn_response()` callback resolves `utterance_key` from Qdrant, formats to wire, enqueues for SKSE. Session events forwarded to tick accumulator for Progeny visibility.
 * Response queue bounded at `maxlen=64`.
 
 **Progeny Qdrant Modules** (committed, in `progeny/src/`):
@@ -321,7 +322,7 @@ When NPCs are in scripted quest sequences, the Creation Engine's quest AI owns t
 * Original memory: `logMemory()`/`offerMemory()` via TXT2VEC/ChromaDB — replaced by dual-vector Qdrant retrieval
 * LLM connectors: was OpenAI/KoboldCPP/Openrouter/Groq — we route exclusively to Beelink Ollama
 * Oghma Infinium: 1900+ lore topics — imported once into Qdrant as static reference data
-* TTS/STT: needs separate handling (MeloTTS/Pocket-TTS/LocalWhisper). May keep CHIM's TTS components initially or route through our service later.
+* TTS/STT: Architecture documented — see Audio Pipeline section. STT already handled via `inputtext_s`. TTS owned by Falcon (local xVASynth/MeloTTS/Kokoro). 16 TTS + 3 STT + 4 ITT backends available from CHIM's ecosystem.
 
 **Existing Wrappers** (reference only, in `thoughtstream-ai/src/garden/`):
 * `qdrant_memory_store.py` — privacy-aware CRUD, 4-tier compression, caching, pub/sub
@@ -1008,7 +1009,7 @@ The system has no "combat mode" flag. Curvature and snap — the 1st and 2nd der
 * SKSE polls via `request` events at POLINT intervals (default 1s). Falcon handles `request` locally from its response queue — never involves Progeny for polling.
 * Falcon's tick interval (~1-3 seconds) is independent of POLINT — it ships typed event packages to Progeny on its own cadence.
 * Progeny returns response bundles when ready (LLM inference may span multiple Falcon ticks). Falcon enqueues and serves on next `request` poll.
-* **Current implementation gap**: Falcon's `send_package()` blocks the tick loop awaiting Progeny's HTTP response. During LLM generation (3-6s), no ticks fire and events accumulate silently. Target architecture: fire-and-forget delivery + async response callback. See Pipelined Prompt Construction below.
+* **Resolved (March 2026)**: Falcon↔Progeny communication uses a persistent WebSocket (`ws://progeny:port/ws`). `send_tick()` is fire-and-forget — the tick loop never blocks. Responses arrive asynchronously via the WebSocket receive loop. Auto-reconnects with exponential backoff on disconnect (NPCs continue on engine AI). Replaces the previous blocking HTTP `send_package()` pattern.
 
 **Concrete async handoff (ambush example):**
 * Tick 1: Ambush. SKSE sends `info` events. Falcon structurally parses them, accumulates in buffer.
@@ -1062,10 +1063,11 @@ Stage C (CPU, on completion): Parse response N, write utterance to Qdrant via wr
 * The 1-2 seconds of prompt construction overhead is *eliminated* from the critical path — it runs in parallel with the previous generation
 * Over a 10-minute play session (~100-200 turns), this saves 2-6 minutes of cumulative latency
 
-**What Falcon must change:**
-* **Fire-and-forget tick delivery.** `send_package()` ships the TickPackage and returns immediately (non-blocking). The tick loop never stalls.
-* **Async response callback.** Progeny delivers results to Falcon via a POST to a Falcon callback endpoint (e.g., `POST /response`) or Falcon polls a Progeny response queue. Either way, the tick loop and response delivery are decoupled.
-* Events flow continuously from Falcon to Progeny on tick cadence. Responses flow back asynchronously when ready. The two streams are independent.
+**What Falcon changed (implemented):**
+* **Persistent WebSocket channel.** `progeny_protocol.py` maintains a WebSocket connection to Progeny's `/ws` endpoint. `send_tick()` sends a JSON frame and returns immediately. The tick loop never stalls.
+* **Async receive loop.** A background task reads response frames from Progeny. On `turn_response`: resolves utterance keys from Qdrant, formats to CHIM wire protocol, enqueues for SKSE polling. Fully decoupled from the tick cadence.
+* **Auto-reconnect.** On disconnect, exponential backoff (1s→30s) retries the connection. NPCs continue on engine AI during disconnection. No manual intervention needed.
+* Events flow continuously from Falcon to Progeny. Responses flow back asynchronously when ready. The two streams are independent over the same persistent connection.
 
 **What Progeny must change:**
 * **Separate the context manager from the LLM executor.** Two concurrent subsystems:
@@ -1896,11 +1898,118 @@ Compiling custom Papyrus scripts (`.psc` → `.pex`) for the CHIM integration. D
 **MMK scripts** (source in `docs/AIAgent/.../Source/Scripts/`):
 * `MMKSetBehavior.psc` — Receives `SetBehavior` commands from Falcon via CHIM's `CHIM_CommandReceived` ModEvent. Parses `Aggression@2` format, applies `SetActorValue` to the target NPC. Dependencies: SKSE (`RegisterForModEvent`, `StringUtil`), CHIM (`AIAgentFunctions.getAgentByName`).
 
+## Audio Pipeline (TTS / STT / ITT)
+
+*Documented March 2026. CHIM provides a complete audio services ecosystem — 16 TTS backends, 3 STT backends, and 4 Image-to-Text backends. MMK leverages these as external services, not internal components.*
+
+### STT — Player Voice Input (Mic → Game)
+
+The player speaks into a microphone, the audio is transcribed, and the text arrives at Falcon as an `inputtext_s` event — identical processing to typed `inputtext`. **Falcon already handles this.** No MMK-specific work needed for voice input beyond ensuring an STT service is running.
+
+**Flow:**
+1. Player presses the CHIM voice key (configurable in-game)
+2. `AIAgentSTTExternal.psc` (Papyrus) captures audio via an SKSE STT plugin
+3. Audio sent to STT service for transcription
+4. Transcribed text POSTed to Falcon as `inputtext_s|localts|gamets|transcribed text`
+5. Falcon treats it as a turn trigger → flows through tick accumulator → Progeny
+
+**Note:** `AIAgentSTTExternal.psc` in the CHIM source is a **stub** — it shows "External STT not installed!" The actual recording/transcription is provided by a separate SKSE plugin that overrides these functions (e.g., CHIM's own STT plugin or a third-party alternative).
+
+**Available backends** (configured via `$STTFUNCTION` in CHIM conf):
+* **Local Whisper** — `http://127.0.0.1:9876/api/v0/transcribe` (recommended — runs on Gaming PC, no API key, private)
+* **OpenAI Whisper** — cloud, requires API key
+* **Azure STT** — cloud, requires API key
+
+**Recommended for MMK:** Local Whisper on the Gaming PC. CPU-based, lightweight, no cloud dependency. Runs alongside Falcon with negligible resource impact on the 9950X3D.
+
+### TTS — NPC Voice Output (LLM Text → Spoken Dialogue)
+
+The LLM generates dialogue text; a TTS service converts it to audio; the SKSE plugin plays the audio through Skyrim's voice system while displaying subtitles. The NPC speaks.
+
+**Flow:**
+1. Progeny returns `utterance_key` to Falcon
+2. Falcon reads utterance text from Qdrant by key
+3. **Falcon calls the TTS service** with (text, npc_voice_id) → receives WAV audio
+4. WAV written to `soundcache/` directory (accessible to Skyrim)
+5. Falcon formats wire response with audio path: `NPCName|DialogueType|Text\r\n`
+6. SKSE plugin receives response, loads WAV, plays audio while displaying subtitle text
+7. NPC's mouth moves via Skyrim's lip-sync system (driven by the WAV)
+
+**Why Falcon owns TTS (not Progeny):** The audio file must be on the Gaming PC where Skyrim can access it. Falcon already has the utterance text (resolved from Qdrant). The TTS HTTP call is a simple fire-and-forget to a local service. Keeping TTS on the Gaming PC avoids shipping audio over LAN.
+
+**Per-NPC voice mapping:** Each NPC profile can specify a different voice model/ID. CHIM's conf system supports per-NPC `$TTSFUNCTION` and voice ID overrides. For MMK, voice mapping stored in `skyrim_agent_state` Qdrant collection or a config file, keyed by NPC name.
+
+**Available backends** (configured via `$TTSFUNCTION` in CHIM conf):
+
+Local (no API key, recommended for privacy/latency):
+* **xVASynth** — `http://localhost:8008` — Skyrim-specific voice cloning. Trained on actual Skyrim voice actors. Lydia sounds like Lydia. Best fidelity for vanilla NPCs.
+* **MeloTTS** — `http://localhost:8084` — Fast, lightweight, good quality.
+* **Kokoro** — `http://localhost:8880` — Modern, high-quality voices.
+* **Zonos (Gradio)** — `http://localhost:7860` — Zyphra model, dynamic tones, voice cloning.
+* **XTTS / XTTSv2** — `http://localhost:8020` — Coqui XTTS, voice cloning from reference audio.
+* **StyleTTSv2** — `http://localhost:5050` — Style transfer, alpha/beta timbre/prosody control.
+* **Mimic3** — `http://localhost:59125` — Mycroft's TTS, simple and fast.
+* **KoboldCPP TTS** — `http://localhost:5001/api/extra/tts` — Built into KoboldCPP.
+
+Cloud (requires API keys):
+* **OpenAI TTS** — `tts-1` / `tts-1-hd` models, multiple voices.
+* **ElevenLabs** — High-quality voice cloning, emotional range.
+* **Azure TTS** — Neural voices with SSML style control (whispering, dazed, etc.).
+* **Google Cloud TTS** — Neural2 voices, pitch/rate control.
+* **CONVAI** — Game-focused TTS.
+* **Coqui AI** — Cloud-hosted Coqui models.
+
+**Recommended for MMK:** xVASynth for vanilla NPCs (authentic voices), Kokoro or MeloTTS as fallback for mod-added NPCs without xVASynth voice models. All local, all on the Gaming PC.
+
+**Sound directory structure:** CHIM uses `Sound/Voice/AIAgent.esp/<voicetype>/<voicetype>.wav` as placeholder audio channels per voice type. The SKSE plugin loads the generated WAV from `soundcache/` and plays it through the appropriate voice channel. Voice types map to Skyrim's voice type system (e.g., `femalecommoner`, `maleuniqueemperor`, `maleuniquesheogorath`).
+
+**Soundcache management:** On `init` (game load), CHIM cleans WAV files older than 6 hours from `soundcache/`. Falcon should replicate this cleanup in its session reset handler.
+
+**Player TTS** (optional): CHIM also supports TTS for the player's own voice — the player's typed/spoken text is synthesized and played back in-game. Configured via `$TTSFUNCTION_PLAYER`. Not critical for MMK but available.
+
+### ITT — Image-to-Text ("Soulgaze")
+
+CHIM's "Soulgaze" feature lets NPCs "see" the game world via screenshots analyzed by vision models. A screenshot is captured, sent to a vision LLM, and the description becomes part of the NPC's context.
+
+**Available backends:**
+* **OpenAI Vision** (GPT-4o-mini) — cloud
+* **Google Gemini Vision** — cloud
+* **Azure Vision** — cloud
+* **Local llama.cpp** with vision model — local
+
+**MMK integration (future):** Soulgaze output would enter the event stream as a text event, flow through the delta pipeline, and get embedded in Qdrant like any other sensory input. The NPC literally processes what it sees through the same emotional architecture as what it hears. Low priority — the event stream from SKSE already provides rich world awareness.
+
+### Integration with Pipelined Architecture
+
+TTS adds latency to the response path: after the LLM generates text, audio synthesis takes 0.5-2 seconds depending on the backend and utterance length. In the pipelined architecture:
+
+1. Progeny finishes generation, ships `utterance_key` to Falcon (fast)
+2. Falcon reads text from Qdrant by key (fast, ~10ms)
+3. **Falcon calls TTS** (0.5-2s, runs on Gaming PC CPU/GPU)
+4. WAV written, wire response queued
+5. SKSE picks up on next `request` poll
+
+The TTS call overlaps with the next generation cycle — while Falcon is synthesizing audio for response N, Progeny is already generating response N+1. The TTS latency is hidden behind the generation window for all but the first response.
+
+**Streaming TTS (future optimization):** Some backends (XTTS, ElevenLabs) support streaming audio generation. Falcon could start playing audio as soon as the first chunk arrives, reducing perceived latency further. The SKSE plugin would need to support streaming audio playback — not currently implemented in CHIM but architecturally possible.
+
+### Config Integration
+
+New fields in `shared/config.py`:
+```
+tts_backend: str = "xvasynth"          # Backend name
+tts_endpoint: str = "http://127.0.0.1:8008"  # Service URL
+tts_default_voice: str = "sk_malenord"  # Fallback voice
+stt_backend: str = "localwhisper"       # Backend name
+stt_endpoint: str = "http://127.0.0.1:9876"  # Service URL
+```
+
+Per-NPC voice overrides stored in NPC profile data (Qdrant `skyrim_agent_state` or config).
+
 ## Open Design Questions
 
 * **Threshold tuning** — What delta magnitude = "significant" emotional shift? Likely needs per-agent calibration based on harmonic buffer decay rates.
 * **Agent activation logic** — Distance threshold? CHIM's NPC visibility list? Both?
-* **TTS/STT routing** — Keep CHIM's TTS components as separate service? Integrate? SKSE plugin expects audio file paths in some response modes.
 * **CHIM.exe launcher** — Currently acts as port proxy between SKSE and server. May need to bypass or replace, depending on whether SKSE connects directly or through CHIM.exe.
 * **Feature frequency tracking** — In-memory dict vs Qdrant payload aggregation? In-memory faster but needs persistence across restarts.
 * **LLM response validation** — How strictly validate LLM-proposed harmonics updates? Clamp magnitude? Smooth with EMA? Reject outliers?

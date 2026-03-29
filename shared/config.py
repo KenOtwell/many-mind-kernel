@@ -62,6 +62,11 @@ class ProgenyConfig:
     def base_url(self) -> str:
         return f"http://{self.host}:{self.port}"
 
+    @property
+    def ws_url(self) -> str:
+        """WebSocket URL for persistent Falcon↔Progeny channel."""
+        return f"ws://{self.host}:{self.port}/ws"
+
 
 @dataclass
 class EmbeddingConfig:
