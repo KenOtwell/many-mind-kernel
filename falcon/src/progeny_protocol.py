@@ -57,7 +57,7 @@ async def _establish_connection() -> None:
 
     url = settings.progeny.ws_url
     try:
-        _ws = await websockets.connect(url, ping_interval=20, ping_timeout=10)
+        _ws = await websockets.connect(url, ping_interval=30, ping_timeout=60)
         logger.info("Connected to Progeny WebSocket at %s", url)
         _receive_task = asyncio.create_task(
             _receive_loop(), name="progeny_ws_receive"
