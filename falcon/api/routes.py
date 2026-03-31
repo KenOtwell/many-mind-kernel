@@ -73,7 +73,8 @@ async def health():
     return {
         "status": "ok",
         "service": "falcon",
-        "progeny_url": settings.progeny.base_url,
+        "progeny_ws": settings.progeny.ws_url,
+        "ws_connected": progeny_protocol._ws is not None,
         "queue_depth": len(_response_queue),
         "active_npcs": active_npcs,
         "tick_interval_s": settings.falcon.tick_interval_seconds,
