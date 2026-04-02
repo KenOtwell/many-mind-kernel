@@ -67,14 +67,13 @@ def make_inputtext_event(
     text: str = "What do you think about the civil war?",
     game_ts: float = 54321.0,
 ) -> TypedEvent:
-    """Create an inputtext TypedEvent (turn trigger)."""
+    """Create an inputtext TypedEvent (player input)."""
     return TypedEvent(
         event_type="inputtext",
         local_ts=datetime.now(timezone.utc).isoformat(),
         game_ts=game_ts,
         raw_data=text,
         parsed_data=None,
-        is_turn_trigger=True,
     )
 
 
@@ -82,14 +81,13 @@ def make_info_event(
     data: str = "Lydia drew her weapon",
     game_ts: float = 54322.0,
 ) -> TypedEvent:
-    """Create an info TypedEvent (non-turn data event)."""
+    """Create an info TypedEvent (data event)."""
     return TypedEvent(
         event_type="info",
         local_ts=datetime.now(timezone.utc).isoformat(),
         game_ts=game_ts,
         raw_data=data,
         parsed_data=None,
-        is_turn_trigger=False,
     )
 
 
@@ -102,13 +100,12 @@ def make_turn_package(
     active_npc_ids: list[str] | None = None,
     game_ts: float = 54321.0,
 ) -> TickPackage:
-    """Create a TickPackage with a turn trigger (player typed something)."""
+    """Create a TickPackage with player input."""
     if active_npc_ids is None:
         active_npc_ids = ["Lydia"]
     event = make_inputtext_event(input_text, game_ts)
     return TickPackage(
         events=[event],
-        has_turn_trigger=True,
         active_npc_ids=active_npc_ids,
         tick_interval_ms=2000,
     )
@@ -119,18 +116,16 @@ def make_data_package(
     data: str = "Lydia drew her weapon",
     game_ts: float = 54322.0,
 ) -> TickPackage:
-    """Create a data-only TickPackage (no turn trigger)."""
+    """Create a data-only TickPackage (no player input)."""
     event = TypedEvent(
         event_type=event_type,
         local_ts=datetime.now(timezone.utc).isoformat(),
         game_ts=game_ts,
         raw_data=data,
         parsed_data=None,
-        is_turn_trigger=False,
     )
     return TickPackage(
         events=[event],
-        has_turn_trigger=False,
         active_npc_ids=[],
         tick_interval_ms=2000,
     )

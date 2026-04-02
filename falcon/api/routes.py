@@ -112,9 +112,9 @@ async def _handle_skse_request(request: Request) -> Response:
     # Diagnostic: log every non-polling event at INFO so addnpc/init visibility
     # is guaranteed regardless of log level.  request events are too frequent.
     if parsed.event_type != "request":
-        logger.info("SKSE event: path=%s type=%s game_ts=%.1f trigger=%s session=%s profile=%s",
+        logger.info("SKSE event: path=%s type=%s game_ts=%.1f session=%s profile=%s",
                     request_path, parsed.event_type, parsed.game_ts,
-                    parsed.is_turn_trigger, parsed.is_session, request_profile)
+                    parsed.is_session, request_profile)
     else:
         logger.debug("SKSE poll: request")
 
@@ -149,7 +149,6 @@ async def _handle_skse_request(request: Request) -> Response:
                 game_ts=parsed.game_ts,
                 raw_data=parsed.data,
                 parsed_data=None,
-                is_turn_trigger=False,
                 request_profile=request_profile,
                 request_path=request_path,
             )
@@ -173,7 +172,6 @@ async def _handle_skse_request(request: Request) -> Response:
             game_ts=parsed.game_ts,
             raw_data=parsed.data,
             parsed_data=parsed_data,
-            is_turn_trigger=parsed.is_turn_trigger,
             request_profile=request_profile,
             request_path=request_path,
         )

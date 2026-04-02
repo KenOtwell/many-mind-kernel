@@ -54,7 +54,7 @@ python scripts/test_ws_roundtrip.py
 # Simple data-only tick (no LLM):
 python scripts/test_ws_simple.py
 
-# Manual turn trigger injection (through Falcon):
+# Manual player input injection (through Falcon):
 $data = "inputtext|$(Get-Date -Format 'yyyyMMddHHmmss')|13333334|Hello there"
 $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($data))
 Invoke-WebRequest -Uri "http://127.0.0.1:8000/comm.php?DATA=$b64" -Method Get
@@ -63,7 +63,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/comm.php?DATA=$b64" -Method Get
 ## Known Working
 
 - **Full WebSocket round-trip**: `test_ws_roundtrip.py` → Progeny → LLM (13s) → turn_response with NPC dialogue ✅
-- **SKSE event parsing**: All event types parse correctly (inputtext=trigger, request=local, addnpc/info*/etc.=accumulate) ✅
+- **SKSE event parsing**: All event types parse correctly (inputtext/inputtext_s=player input, request=local, addnpc/info*/etc.=accumulate) ✅
 - **GET+POST routing**: SKSE DLL sends GET with base64 query params, Falcon accepts both ✅
 - **WebSocket non-blocking**: Progeny processes turns via `asyncio.create_task()`, receive loop stays alive ✅
 - **tick_id**: Must be UUID format (uuid4), not plain string ✅

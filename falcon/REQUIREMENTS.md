@@ -7,17 +7,15 @@ Falcon owns the current tick: SKSE I/O, embedding, emotional delta computation, 
 
 1. SKSE plugin POSTs a game event (wire format: `type|localts|gamets|data`)
 2. Parse event via wire protocol
-3. Embed event text (all-MiniLM-L6-v2, CPU-only) → 384d semantic vector
-4. Project embedding to 9d emotional semagram via dot product with orthogonal basis vectors
-5. Read agent's current emotional state from Qdrant `skyrim_agent_state`
-6. Compute emotional delta: projection − current_state → delta, curvature, snap
-7. Write RAW event to Qdrant `skyrim_npc_memories` (immutable, with emotional vector)
-8. If turn trigger (`inputtext` / `inputtext_s`): run multi-axis memory retrieval
-9. POST `EventPayload` to Progeny `/ingest` endpoint
-10. For turn triggers: Progeny responds with `TurnResponse` (3-6s, handled async — see Async Pattern)
-11. On receiving `TurnResponse`: run each agent's utterance text back through steps 3-7 (bidirectional delta — the agent's own words shift its emotional state)
-12. Format responses as CHIM wire protocol, queue for SKSE
-13. On SKSE `request` poll: dequeue and return formatted response, or return empty
+3. Structurally decode data field via event_parsers.py
+4. Push TypedEvent into TickAccumulator
+5. On tick cadence (~2s): snapshot buffer, ship TickPackage to Progeny via WebSocket
+6. Progeny autonomously decides whether to respond (TurnResponse) or accumulate (AckResponse)
+7. On receiving TurnResponse: format responses as CHIM wire protocol, queue for SKSE
+8. On SKSE `request` poll: dequeue and return formatted response, or return empty
+
+Falcon is pure data transport — no turn-coupling flags, no gating on event types.
+Progeny decides when to respond based on accumulated state.
 
 ## Interfaces
 
@@ -31,7 +29,7 @@ Falcon owns the current tick: SKSE I/O, embedding, emotional delta computation, 
 
 | Category | Types | Notes |
 |---|---|---|
-| Turn triggers | `inputtext`, `inputtext_s` | Player typed/spoken input. Triggers LLM via Progeny. |
+| Player input | `inputtext`, `inputtext_s` | Player typed/spoken input. Progeny decides when to respond. |
 | Game state | `info`, `infonpc`, `infoloc`, `location` | NPC state, environment, position. Forward to Progeny for accumulation. |
 | Narrative | `chat`, `death`, `diary`, `quest`, `_quest`, `book` | Story events. Forward to Progeny. |
 | Control | `request` | SKSE polling for response. Falcon-local — dequeue or return empty. NOT forwarded. |
@@ -71,8 +69,6 @@ Falcon communicates with Progeny via a single HTTP endpoint. This is the only in
     "source_agent": "Player"
   },
 
-  "is_turn_trigger": true,
-
   "emotional_state": {
     "Lydia": {
       "base_vector": [0.1, 0.6, 0.2, 0.0, 0.3, 0.0, 0.1, 0.7, 0.4],
@@ -83,7 +79,7 @@ Falcon communicates with Progeny via a single HTTP endpoint. This is the only in
   },
 
   "memory_context": {
-    "_comment": "Only present when is_turn_trigger == true",
+    "_comment": "Present when Progeny runs the full pipeline",
     "Lydia": {
       "retrieved_keys": ["qdrant-point-id-1", "qdrant-point-id-2"],
       "summaries": [
@@ -137,7 +133,7 @@ Falcon communicates with Progeny via a single HTTP endpoint. This is the only in
 **Field rules:**
 - `event_id`: UUID v4, unique per event. Echoed back in response.
 - `emotional_state`: keyed by agent_id. Only agents affected by this event are included.
-- `memory_context`: only present when `is_turn_trigger == true`. Contains Falcon's retrieval results.
+- `memory_context`: present when Progeny runs the full pipeline. Contains retrieval results.
 - `npc_metadata`: all NPCs in loaded cells with known metadata. Progeny uses this for scheduling.
 - `urgency`: max snap across active agents this tick. Continuous float, not a mode flag.
 - `world_state.reset`: true on cell transition — signals Progeny to reinitialize spatial context.

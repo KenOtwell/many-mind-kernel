@@ -40,14 +40,15 @@ class TickPackage(BaseModel):
     tick_id: UUID
     timestamp: datetime
     events: list[TypedEvent]       # Time-ordered typed events this tick
-    has_turn_trigger: bool         # Convenience flag — verify by scanning events
     tick_interval_ms: int          # Actual ms since last tick
     active_npc_ids: list[str]      # NPCs in loaded cells (from addnpc accumulation)
 ```
 
 **Your outbound contract**:
-- `TurnResponse` when `has_turn_trigger` is True (contains `responses: list[AgentResponse]`)
-- `AckResponse` when False (just echo `tick_id`, status="accumulated")
+- `TurnResponse` when Progeny detects player input among events (contains `responses: list[AgentResponse]`)
+- `AckResponse` otherwise (just echo `tick_id`, status="accumulated")
+
+Progeny autonomously decides when to respond — Falcon ships pure data with no turn-coupling flags.
 
 Both echo `tick_id` for correlation. See `shared/schemas.py` for full models.
 
@@ -59,7 +60,8 @@ class TypedEvent(BaseModel):
     game_ts: float
     raw_data: str                # Verbatim data field
     parsed_data: Optional[dict]  # Structural decode (SpeechData, NpcRegistration, etc.)
-    is_turn_trigger: bool
+    request_profile: Optional[str]  # CHIM profile query param
+    request_path: Optional[str]     # Original HTTP path
 ```
 
 `parsed_data` is populated for known types (`_speech`, `addnpc`, `updatestats`, `_quest`, `_uquest`, `_questdata`, `itemtransfer`). For everything else it's None — raw_data is preserved.
@@ -69,7 +71,7 @@ class TypedEvent(BaseModel):
 Progeny receives typed event packages and does ALL cognitive work:
 
 1. **Accept TickPackages** — `POST /ingest` endpoint
-2. **Accumulate events** — buffer per-agent, maintain world state, detect turn boundaries
+2. **Accumulate events** — buffer per-agent, maintain world state, detect player input
 3. **Embed text** — all-MiniLM-L6-v2 on CPU (speech text, player input, NPC dialogue)
 4. **Compute emotional deltas** — embed → project onto 9d emotional bases → delta vs held state → update curvature/snap
 5. **Manage harmonic buffers** — per-agent fast/medium/slow EMA traces, λ(t), cross-buffer coherence

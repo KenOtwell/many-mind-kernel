@@ -22,30 +22,28 @@ from tests.fixtures.factories import (
 class TestParseEvent:
     """Test parse_event with various SKSE wire format strings."""
 
-    def test_inputtext_is_turn_trigger(self):
-        """Player typed input should be flagged as turn trigger."""
+    def test_inputtext_parsed(self):
+        """Player typed input should be parsed and forwarded."""
         parsed = parse_event(WIRE_INPUTTEXT)
         assert parsed is not None
         assert parsed.event_type == "inputtext"
-        assert parsed.is_turn_trigger is True
         assert parsed.is_local is False
         assert parsed.needs_forwarding is True
         assert parsed.game_ts == 54321.0
         assert "civil war" in parsed.data
 
-    def test_inputtext_s_is_turn_trigger(self):
-        """Speech input should also be a turn trigger."""
+    def test_inputtext_s_parsed(self):
+        """Speech input should be parsed and forwarded."""
         parsed = parse_event(WIRE_INPUTTEXT_S)
         assert parsed is not None
         assert parsed.event_type == "inputtext_s"
-        assert parsed.is_turn_trigger is True
+        assert parsed.needs_forwarding is True
 
     def test_info_is_data_event(self):
-        """Info event should NOT be a turn trigger."""
+        """Info event should be forwarded."""
         parsed = parse_event(WIRE_INFO)
         assert parsed is not None
         assert parsed.event_type == "info"
-        assert parsed.is_turn_trigger is False
         assert parsed.needs_forwarding is True
 
     def test_request_is_local(self):
@@ -123,7 +121,6 @@ class TestParseEvent:
         parsed = parse_event("INPUTTEXT|123|456.0|hello")
         assert parsed is not None
         assert parsed.event_type == "inputtext"
-        assert parsed.is_turn_trigger is True
 
 
 # ---------------------------------------------------------------------------

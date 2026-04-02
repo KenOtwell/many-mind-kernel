@@ -237,13 +237,16 @@ class TypedEvent(BaseModel):
     (frequently an MD5-backed profile key rather than a display name).
     request_path preserves the original HTTP path (`/comm.php`,
     `/streamv2.php`, etc.) for transport compatibility and debugging.
+
+    Turn-coupling removed: Falcon does not classify events as turn triggers.
+    Progeny autonomously detects player input (inputtext/inputtext_s) among
+    accumulated events and decides when to respond.
     """
     event_type: str          # Lowercased verbatim from wire
     local_ts: str
     game_ts: float
     raw_data: str
     parsed_data: Optional[dict] = None   # Type-specific structural decode
-    is_turn_trigger: bool = False
     request_profile: Optional[str] = None
     request_path: Optional[str] = None
 
@@ -254,9 +257,8 @@ class TickPackage(BaseModel):
 
     Falcon ships this on its tick cadence (~1-3 seconds, configurable).
     Contains every SKSE event accumulated since the last tick, in arrival
-    order. Progeny detects turn boundaries by scanning for inputtext /
-    inputtext_s events. has_turn_trigger is a convenience boolean —
-    Progeny should verify by scanning events.
+    order. The tick is pure data transport — Progeny autonomously detects
+    player input and decides when to respond.
 
     active_npc_ids is populated from Falcon's addnpc-derived NPC registry
     (the set of NPCs currently in loaded cells).
@@ -264,7 +266,6 @@ class TickPackage(BaseModel):
     tick_id: UUID = Field(default_factory=uuid4)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     events: list[TypedEvent] = Field(default_factory=list)
-    has_turn_trigger: bool = False
     tick_interval_ms: int = 0
     active_npc_ids: list[str] = Field(
         default_factory=list,

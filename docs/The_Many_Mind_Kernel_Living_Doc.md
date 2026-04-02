@@ -809,7 +809,7 @@ for each candidate memory m:
 
 SKSE plugin fires events continuously. Falcon accumulates and packages on a tick; Progeny interprets and responds.
 
-* Falcon: receives SKSE events, `wire_protocol.py` produces a `ParsedEvent` with routing flags (`is_turn_trigger`, `is_local`, `is_session`)
+* Falcon: receives SKSE events, `wire_protocol.py` produces a `ParsedEvent` with routing flags (`is_local`, `is_session`) — no turn-coupling; Progeny autonomously detects player input
 * Falcon: **Falcon-local events** (`request`, `chatnf`, `just_say`) handled immediately and never accumulated. `request` dequeues responses; `just_say` queues data to response queue; `chatnf` logs and returns empty.
 * Falcon: **Session events** (`init`, `wipe`, `playerdied`, `goodnight`, `waitstart`, `waitstop`) handled locally — the first three clear Falcon's NPC registry (`active_npc_ids`), all return empty. Not forwarded to Progeny in current implementation.
 * Falcon: all other events → `event_parsers.py` decodes structure → `TypedEvent` pushed to `tick_accumulator.py`
@@ -1593,7 +1593,7 @@ Falcon is deliberately minimal. It parses wire format, accumulates events, packa
 
 **`wire_protocol.py`** — SKSE wire protocol parsing + response formatting [Falcon]
 * Parse inbound: `type|localts|gamets|data` → `ParsedEvent` (frozen dataclass, NOT in `schemas.py` — Falcon-internal only)
-* `ParsedEvent` carries routing flags: `is_turn_trigger` (from `TURN_TRIGGER_TYPES`), `is_local` (from `FALCON_LOCAL_TYPES`), `is_session` (from `SESSION_TYPES`). These drive `routes.py` dispatch.
+* `ParsedEvent` carries routing flags: `is_local` (from `FALCON_LOCAL_TYPES`), `is_session` (from `SESSION_TYPES`). These drive `routes.py` dispatch. Turn-coupling removed — Progeny autonomously detects player input (`PLAYER_INPUT_TYPES`) among accumulated events.
 * Split on first 3 pipes (data field may contain pipes)
 * Format outbound: `format_turn_response()` converts list of `AgentResponse` dicts → multi-line CHIM wire string. Dialogue first, then actions per agent. Unknown commands silently dropped.
 * `format_dialogue()`, `format_action()`, `format_agent_responses()` — composable helpers for building wire lines
@@ -1615,7 +1615,7 @@ Falcon is deliberately minimal. It parses wire format, accumulates events, packa
 * Accumulates `TypedEvent` objects in a time-ordered buffer between ticks
 * **NPC registry**: tracks `active_npc_ids` (set of NPC names) from `addnpc` events — populated on push when `event_type=="addnpc"` and `parsed_data` contains a name. Shipped in every `TickPackage.active_npc_ids` so Progeny knows which NPCs are in loaded cells.
 * **NPC registry clear**: `clear_npcs()` called by `routes.py` on session-reset events (`init`/`wipe`/`playerdied`)
-* On tick (~1-3 seconds): snapshot buffer under async lock, wrap as `TickPackage` (with `active_npc_ids`, `has_turn_trigger`, `tick_interval_ms`), POST to Progeny via `progeny_protocol.py`, clear buffer. Skips empty ticks.
+* On tick (~1-3 seconds): snapshot buffer under async lock, wrap as `TickPackage` (with `active_npc_ids`, `tick_interval_ms`), ship to Progeny via WebSocket, clear buffer. Skips empty ticks. No turn-coupling flags — the tick is pure data transport.
 * Tick interval configurable via `settings.falcon.tick_interval_seconds` (default 2.0s), independent of SKSE POLINT
 * Concurrency: asyncio lock protects buffer; `push()` is awaited directly from HTTP handlers (fast lock + append). Background `asyncio.Task` runs `_tick_loop()`.
 

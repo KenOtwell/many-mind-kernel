@@ -151,7 +151,6 @@ def _make_speech_event(speaker: str, text: str):
         game_ts=100.0,
         raw_data=text,
         parsed_data={"speaker": speaker, "speech": text},
-        is_turn_trigger=False,
     )
 
 
@@ -254,7 +253,6 @@ class TestProcessInbound:
             game_ts=100.0,
             raw_data="Lydia drew her weapon",
             parsed_data=None,
-            is_turn_trigger=False,
         )
         lydia_buf = AgentBuffer(agent_id="Lydia")
         lydia_buf.append(info_event)

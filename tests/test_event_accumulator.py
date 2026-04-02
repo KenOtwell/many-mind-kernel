@@ -19,7 +19,6 @@ def _speech_event(speaker: str = "Lydia", text: str = "I am sworn to carry your 
         game_ts=100.0,
         raw_data=text,
         parsed_data={"speaker": speaker, "speech": text, "listener": "Player", "location": "Whiterun"},
-        is_turn_trigger=False,
     )
 
 
@@ -30,7 +29,6 @@ def _addnpc_event(name: str = "Lydia") -> TypedEvent:
         game_ts=100.0,
         raw_data=f"{name}@base@female@Nord",
         parsed_data={"name": name, "race": "Nord"},
-        is_turn_trigger=False,
     )
 
 
@@ -41,7 +39,6 @@ def _updatestats_event(npc_name: str = "Lydia") -> TypedEvent:
         game_ts=100.0,
         raw_data=f"{npc_name}@25@100@100@50@50@80@80@1.0",
         parsed_data={"npc_name": npc_name, "level": 25, "health": 100.0},
-        is_turn_trigger=False,
     )
 
 
@@ -52,7 +49,6 @@ def _location_event(location: str = "WhiterunExterior") -> TypedEvent:
         game_ts=100.0,
         raw_data=location,
         parsed_data=None,
-        is_turn_trigger=False,
     )
 
 
@@ -63,7 +59,6 @@ def _init_event() -> TypedEvent:
         game_ts=0.0,
         raw_data="1.0.0",
         parsed_data=None,
-        is_turn_trigger=False,
     )
 
 
@@ -86,7 +81,7 @@ class TestTurnBoundaryDetection:
         result = acc.ingest(pkg)
         assert result is None
 
-    def test_inputtext_s_is_also_turn_trigger(self):
+    def test_inputtext_s_also_detected_as_player_input(self):
         acc = EventAccumulator()
         event = TypedEvent(
             event_type="inputtext_s",
@@ -94,9 +89,8 @@ class TestTurnBoundaryDetection:
             game_ts=100.0,
             raw_data="Help me with something",
             parsed_data=None,
-            is_turn_trigger=True,
         )
-        pkg = TickPackage(events=[event], has_turn_trigger=True, active_npc_ids=["Lydia"])
+        pkg = TickPackage(events=[event], active_npc_ids=["Lydia"])
         result = acc.ingest(pkg)
         assert result is not None
         assert result.player_input == "Help me with something"
@@ -119,7 +113,6 @@ class TestAgentExtraction:
         speech = _speech_event("Belethor", "Do come back")
         pkg = TickPackage(
             events=[speech, make_inputtext_event()],
-            has_turn_trigger=True,
             active_npc_ids=["Belethor"],
         )
         ctx = acc.ingest(pkg)
@@ -131,7 +124,6 @@ class TestAgentExtraction:
         acc = EventAccumulator()
         pkg = TickPackage(
             events=[_addnpc_event("Ysolda"), make_inputtext_event()],
-            has_turn_trigger=True,
             active_npc_ids=["Ysolda"],
         )
         ctx = acc.ingest(pkg)
@@ -141,7 +133,6 @@ class TestAgentExtraction:
         acc = EventAccumulator()
         pkg = TickPackage(
             events=[_updatestats_event("Lydia"), make_inputtext_event()],
-            has_turn_trigger=True,
             active_npc_ids=["Lydia"],
         )
         ctx = acc.ingest(pkg)
@@ -152,7 +143,6 @@ class TestAgentExtraction:
         info = make_info_event("Something happened in the world")
         pkg = TickPackage(
             events=[info, make_inputtext_event()],
-            has_turn_trigger=True,
             active_npc_ids=[],
         )
         ctx = acc.ingest(pkg)
@@ -177,10 +167,9 @@ class TestBufferManagement:
             events=[_speech_event("Lydia", "Second")],
             active_npc_ids=["Lydia"],
         ))
-        # Turn trigger flushes
+        # Player input flushes
         pkg = TickPackage(
             events=[make_inputtext_event()],
-            has_turn_trigger=True,
             active_npc_ids=["Lydia"],
         )
         ctx = acc.ingest(pkg)
@@ -191,7 +180,6 @@ class TestBufferManagement:
         acc = EventAccumulator()
         pkg = TickPackage(
             events=[_speech_event("Lydia"), make_inputtext_event()],
-            has_turn_trigger=True,
             active_npc_ids=["Lydia"],
         )
         acc.ingest(pkg)
@@ -228,7 +216,6 @@ class TestLocationTracking:
         acc = EventAccumulator()
         pkg = TickPackage(
             events=[_location_event("Dragonsreach"), make_inputtext_event()],
-            has_turn_trigger=True,
             active_npc_ids=[],
         )
         ctx = acc.ingest(pkg)

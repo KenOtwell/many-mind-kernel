@@ -246,7 +246,6 @@ class TestSchemaValidation:
         json_data = package.model_dump(mode="json")
         restored = TickPackage.model_validate(json_data)
         assert restored.events[0].event_type == "inputtext"
-        assert restored.has_turn_trigger is True
         assert len(restored.active_npc_ids) == 1
 
     def test_actor_value_clamping(self):

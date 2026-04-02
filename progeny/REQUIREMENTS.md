@@ -7,8 +7,8 @@ Stateful mind owner on the Beelink 395AI. Progeny owns the agent minds: event ac
 1. Receive `EventPayload` from upstream via `POST /ingest`
 2. Route event to `event_accumulator`: update per-agent event buffers
 3. Apply `emotional_state` deltas to `harmonic_buffer` per affected agent: update fast/medium/slow EMA, recompute curvature, snap, λ(t), cross-buffer coherence
-4. If NOT a turn trigger (`is_turn_trigger == false`): return `AckResponse`, done
-5. **Turn trigger** — begin prompt construction:
+4. If no player input detected among events: return `AckResponse`, done
+5. **Player input detected** — begin prompt construction:
 6. `agent_scheduler`: compute tier assignments from `npc_metadata` (distance, collaboration, curvature promotion, cadence filter) → ordered agent roster for this turn
 7. `prompt_formatter`: assemble canonical JSON prompt — system message + world/agent/input data message + instruction message. Agent blocks at tier-appropriate granularity. Curvature-driven context truncation.
 8. `bundle_manager`: expand `memory_context` keys into full context bundles for high-tier agents
@@ -42,8 +42,6 @@ Progeny exposes a single ingest endpoint. This is the only interface to the upst
     "source_agent": "Player"
   },
 
-  "is_turn_trigger": true,
-
   "emotional_state": {
     "Lydia": {
       "base_vector": [0.1, 0.6, 0.2, 0.0, 0.3, 0.0, 0.1, 0.7, 0.4],
@@ -54,7 +52,7 @@ Progeny exposes a single ingest endpoint. This is the only interface to the upst
   },
 
   "memory_context": {
-    "_comment": "Only present when is_turn_trigger == true",
+    "_comment": "Present when Progeny runs the full pipeline",
     "Lydia": {
       "retrieved_keys": ["qdrant-point-id-1", "qdrant-point-id-2"],
       "summaries": [
@@ -108,7 +106,7 @@ Progeny exposes a single ingest endpoint. This is the only interface to the upst
 **Field rules:**
 - `event_id`: UUID v4, echoed in response.
 - `emotional_state`: pre-computed upstream. Progeny applies these deltas to harmonic buffers — it never computes its own 9d projections.
-- `memory_context`: present only when `is_turn_trigger == true`. Contains retrieved memory keys, summaries, and lore hits for prompt enrichment.
+- `memory_context`: present when Progeny decides to run the full pipeline. Contains retrieved memory keys, summaries, and lore hits for prompt enrichment.
 - `npc_metadata`: all NPCs in loaded cells. Progeny uses positions for scheduling, `in_scene` for quest-collision guard, `actor_values` for prompt context.
 - `urgency`: max snap across active agents. Continuous float. Feeds into curvature-driven prompt shaping.
 - `world_state.reset`: on cell transition, reinitialize spatial context per agent. Emotional state and memory persist.

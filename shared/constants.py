@@ -46,11 +46,12 @@ ACTOR_VALUE_RANGES: dict[str, tuple[int, int, str]] = {
 # SKSE Event Types
 # ---------------------------------------------------------------------------
 
-# Turn triggers — fall through pre-processor to LLM in HerikaServer;
-# in MMK, Progeny detects these in the incoming TickPackage.
-TURN_TRIGGER_TYPES: frozenset[str] = frozenset({"inputtext", "inputtext_s"})
+# Player input event types — Progeny uses these to identify player speech
+# among accumulated events and decide when to respond. This is a semantic
+# label for event classification, not a flow-control gate.
+PLAYER_INPUT_TYPES: frozenset[str] = frozenset({"inputtext", "inputtext_s"})
 
-# Events handled locally by Falcon — never accumulated or forwarded to Progeny.
+# Events handled locally by Falcon
 # request  : SKSE polls for queued responses — dequeue from local response queue.
 # chatnf   : Chat target not found — log and return empty.
 # just_say : Direct output passthrough — queue data text directly for SKSE.

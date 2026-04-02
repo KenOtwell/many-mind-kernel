@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from shared.constants import (
-    TURN_TRIGGER_TYPES, FALCON_LOCAL_TYPES, SESSION_TYPES,
+    FALCON_LOCAL_TYPES, SESSION_TYPES,
     COMMAND_VOCABULARY, WIRE_LINE_ENDING, WIRE_ACTION_PARAM_SEPARATOR,
 )
 
@@ -29,7 +29,6 @@ class ParsedEvent:
     local_ts: str
     game_ts: float
     data: str
-    is_turn_trigger: bool
     is_local: bool
     is_session: bool
 
@@ -73,7 +72,6 @@ def parse_event(raw_body: str) -> Optional[ParsedEvent]:
         local_ts=local_ts,
         game_ts=game_ts,
         data=data,
-        is_turn_trigger=event_type in TURN_TRIGGER_TYPES,
         is_local=event_type in FALCON_LOCAL_TYPES,
         is_session=event_type in SESSION_TYPES,
     )

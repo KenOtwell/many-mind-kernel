@@ -9,7 +9,7 @@ async def test():
     ws = await websockets.connect(url, ping_interval=30, ping_timeout=60)
     print(f"Connected to {url}")
 
-    # Data-only tick — no turn trigger, should get an ack back instantly
+    # Data-only tick — no player input, should get an ack back instantly
     frame = json.dumps({"type": "tick", "data": {
         "events": [{
             "event_type": "addnpc",
@@ -17,9 +17,7 @@ async def test():
             "game_ts": 13333334.0,
             "raw_data": "Lydia@Lydia@Female@Nord@000A2C94",
             "parsed_data": None,
-            "is_turn_trigger": False,
         }],
-        "has_turn_trigger": False,
         "tick_interval_ms": 2000,
         "active_npc_ids": ["Lydia"],
         "tick_id": str(uuid4()),

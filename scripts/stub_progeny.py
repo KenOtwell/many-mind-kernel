@@ -17,6 +17,7 @@ from shared.schemas import (
     AgentResponse, ActorValueDeltas, ActionCommand,
     ExtractionLevel,
 )
+from shared.constants import PLAYER_INPUT_TYPES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [stub] %(message)s")
 logger = logging.getLogger("stub_progeny")
@@ -80,7 +81,8 @@ def _canned(agent_id: str) -> AgentResponse:
 @app.post("/ingest")
 async def ingest(package: TickPackage) -> TurnResponse | AckResponse:
     """Mock Progeny ingest — accumulate or return canned turn response."""
-    if not package.has_turn_trigger:
+    has_player_input = any(e.event_type in PLAYER_INPUT_TYPES for e in package.events)
+    if not has_player_input:
         logger.info("Accumulated tick (%d events)", len(package.events))
         return AckResponse(tick_id=package.tick_id)
 

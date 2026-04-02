@@ -2,11 +2,12 @@
 Event accumulator for Progeny.
 
 Ingests TypedEvents from Falcon's TickPackages, maintains per-agent event
-buffers across turns, detects turn boundaries (inputtext/inputtext_s),
+buffers across turns, detects player input (inputtext/inputtext_s),
 and flushes accumulated context for prompt building.
 
-Turn boundary detection happens HERE, not on Falcon — Falcon ships events
-like any other data. Progeny scans for turn triggers.
+Player input detection is Progeny's autonomous cognitive concern —
+Falcon ships all events as pure data with no turn-coupling flags.
+Progeny decides when to respond based on accumulated state.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from shared.constants import TURN_TRIGGER_TYPES, SESSION_TYPES
+from shared.constants import PLAYER_INPUT_TYPES, SESSION_TYPES
 from shared.schemas import TickPackage, TypedEvent
 
 from typing import TYPE_CHECKING
@@ -76,8 +77,8 @@ class EventAccumulator:
     """
     Accumulates typed events from Falcon's TickPackages.
 
-    Maintains per-agent buffers, tracks world state, and detects turn
-    boundaries. On turn trigger, flush_turn() returns a TurnContext
+    Maintains per-agent buffers, tracks world state, and detects player
+    input. When player input arrives, flush_turn() returns a TurnContext
     with everything the prompt builder needs.
     """
 
@@ -90,7 +91,7 @@ class EventAccumulator:
         self._session_events: list[TypedEvent] = []
         # Current location (updated from location events)
         self.current_location: str = "Unknown"
-        # Last player input (from most recent turn trigger)
+        # Last player input (from most recent player input event)
         self._pending_player_input: Optional[str] = None
         # Active NPC IDs from latest tick
         self._active_npc_ids: list[str] = []
@@ -102,10 +103,10 @@ class EventAccumulator:
         Ingest a TickPackage from Falcon.
 
         Routes each event to the appropriate buffer based on type.
-        Returns a TurnContext if a turn trigger was detected, else None.
+        Returns a TurnContext if player input was detected, else None.
         """
         self._active_npc_ids = package.active_npc_ids
-        has_turn_trigger = False
+        has_player_input = False
 
         # Present NPCs for fact propagation (player + all active)
         present_ids = ["Player"] + list(package.active_npc_ids)
@@ -120,9 +121,9 @@ class EventAccumulator:
         for event in package.events:
             event_type = event.event_type
 
-            # Turn trigger detection
-            if event_type in TURN_TRIGGER_TYPES:
-                has_turn_trigger = True
+            # Player input detection (Progeny's autonomous decision)
+            if event_type in PLAYER_INPUT_TYPES:
+                has_player_input = True
                 self._pending_player_input = event.raw_data
                 continue
 
@@ -151,8 +152,8 @@ class EventAccumulator:
             # Record fact for all significant events
             self._record_fact(event, present_ids)
 
-        # If turn trigger detected, flush and return context
-        if has_turn_trigger and self._pending_player_input is not None:
+        # If player input detected, flush and return context
+        if has_player_input and self._pending_player_input is not None:
             return self.flush_turn()
         return None
 

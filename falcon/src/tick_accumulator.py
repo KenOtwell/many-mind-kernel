@@ -120,17 +120,15 @@ class TickAccumulator:
         elapsed_ms = int((now - self._last_tick_time) * 1000)
         self._last_tick_time = now
 
-        has_turn = any(e.is_turn_trigger for e in events)
         package = TickPackage(
             events=events,
-            has_turn_trigger=has_turn,
             tick_interval_ms=elapsed_ms,
             active_npc_ids=active_ids,
         )
 
         logger.debug(
-            "Tick fired: %d events, turn=%s, npcs=%d",
-            len(events), has_turn, len(active_ids),
+            "Tick fired: %d events, npcs=%d",
+            len(events), len(active_ids),
         )
 
         try:
