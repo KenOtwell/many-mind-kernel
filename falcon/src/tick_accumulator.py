@@ -50,6 +50,15 @@ class TickAccumulator:
         self._task = asyncio.create_task(self._tick_loop(), name="tick_accumulator")
         logger.info("TickAccumulator started (interval=%.1fs)", self._interval)
 
+    async def force_tick(self) -> None:
+        """Force an immediate tick fire, bypassing the timer.
+
+        Used when a player input event arrives on a stream connection
+        and needs to reach Progeny immediately rather than waiting for
+        the next scheduled tick.
+        """
+        await self._fire_tick()
+
     async def stop(self) -> None:
         """Cancel the background tick task cleanly."""
         if self._task and not self._task.done():

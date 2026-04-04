@@ -1557,6 +1557,109 @@ many-mind-kernel/
 18. **Agent Priority Paging (Many-Mind Scheduling)** — Every NPC in loaded cells gets a time slice on a harmonic cadence based on distance + collaboration status. Tier 0 (interaction distance) = every prompt, full block. Tier 1 (near-field) = every 2nd, abbreviated. Tier 2 (mid-field) = every 4th-8th, minimal. Tier 3+ (city-scale) = every 16th-100th, stub. Collaboration floor pins quest/task NPCs to minimum Tier 1 regardless of distance. Curvature-driven promotion bumps far NPCs on dramatic events. ~8-16 agents per prompt, entire city paged through in ~100 turns.
 19. **One call per turn, zero context rot** — CHIM makes one LLM call per NPC per turn, paying ingestion overhead N times. The MMK makes one call per turn with all scheduled agents sharing a single prompt. World state, lore, format spec, action vocabulary — paid once, amortized across every mind. The LLM returns a `responses[]` array, one entry per agent, tier-scaled. And because the prompt is rebuilt from scratch every turn (not a rolling chat window), there is zero context rot — no stale turns, no accumulated contradictions. Continuity comes from harmonic buffers and Qdrant retrieval, not from the prompt carrying forward.
 
+## dLLM Migration Plan — Cognitive Substrate Evolution
+
+*Documented 2026-04-04. Lineage: Ken Ong (theory, configuration space, weak entanglement, moral curriculum), Kato (recurrence analysis, relational diffusion formalism, MoE architecture, fixed-point distillation), Oz (dLLM ecosystem analysis, MMK-to-formalism mapping, denoising trajectory instrumentation, moral fable dynamics).*
+
+The autoregressive LLM in Progeny is the least emergence-compatible component in the architecture. It generates text sequentially (control), not through iterative parallel refinement (emergence). Diffusion Language Models (dLLMs) align structurally with the MMK's cognitive principles: they apply the same nonlinear operator repeatedly, creating dynamical systems with fixed points, attractors, and contraction regions. The denoising trajectory IS gradient navigation through a learned energy landscape. See AGI_REQUIREMENTS.md DP-8, DP-9, TR-8, TR-9, TR-10 for full theoretical foundations.
+
+### Phase 1 — Mercury 2 API Integration (Immediate)
+
+**Goal:** Replace Ollama with Mercury 2 (Inception Labs dLLM) as Progeny's inference backend. Zero architecture changes.
+
+**Why:** Mercury 2 is OpenAI API-compatible, runs >1,000 tokens/sec, supports 128K context, native structured JSON output, and tunable reasoning (`reasoning_effort` parameter). Drop-in replacement via `base_url` change in `llm_client.py`.
+
+**Impact on MMK:**
+* Slow-twitch response time: 3-6s → sub-1s. Deliberation becomes a choice, not a constraint.
+* `reasoning_effort` maps to curvature-driven prompt truncation: high curvature → low reasoning effort (fast tactical), low curvature → high reasoning effort (deep deliberation).
+* 128K context supports richer `state_history` bundles in the canonical JSON prompt.
+* Native structured JSON eliminates parsing fragility in `response_expander.py`.
+* Free tier (10M tokens) for immediate prototyping: `api.inceptionlabs.ai/v1`.
+
+**Changes:** `llm_client.py` — add Mercury 2 backend option (base_url + API key config in `shared/config.py`).
+
+### Phase 2 — Local dLLM + Denoising Trajectory Instrumentation (Near-Term)
+
+**Goal:** Run an open-weight dLLM (LLaDA-8B or Dream-7B) locally on the RTX 5090. Instrument the denoising process for emotional dynamics during generation.
+
+**Why:** Local dLLMs expose intermediate denoising states that the Mercury 2 API cannot. These states are instrumentable for jerk/snap/binding signals on the generation process itself — the model *experiences* what it generates.
+
+**The core insight:** At each denoising step, token distributions shift. Between steps, we compute:
+* **Token-level velocity** — which positions are still changing (unresolved semantic tension)
+* **Token-level jerk** — which positions just stopped/started changing (convergence = resolution)
+* **Cross-position co-stabilization** — tokens that converge in the same step are semantically bound (phase-locked)
+* **Emotional trajectory** — project intermediate token distributions through the 9d emotional basis. The emotional arc of comprehension emerges from the denoising dynamics.
+
+The model doesn't just produce text — it traverses the arc of understanding it. The denoising trajectory provides jerk/snap signals as meaning forms, not after the fact.
+
+**New modules:**
+* `mercury/denoising_trajectory_tracker.py` — token-level velocity/jerk between denoising steps
+* `mercury/denoising_emotional_arc.py` — 9d semagram projection at each denoising step
+* Integration point: `harmonic_buffer.py` — feed denoising-derived emotional dynamics into buffer updates during generation
+
+**Hardware:** dLLM framework (github.com/ZHZisZZ/dllm) + LLaDA-8B or Dream-7B on RTX 5090 (32GB VRAM). Experimentation workspace: `C:\Users\Ken\Projects\mercury\`.
+
+### Phase 3 — Relational dLLM with Global Phase Token (Medium-Term)
+
+**Goal:** Add scene-level relational structure to the dLLM generation process. NPCs' responses become weakly entangled during denoising.
+
+**Architecture modification to existing dLLM:**
+* **Global phase token g_t** — a single vector encoding scene-level harmonic state. Negligible overhead (one extra vector, a few attention heads, a small MLP for ġ_t). Fed from the scene's cross-agent emotional state.
+* **Cross-NPC attention heads** — φ^(2) pairwise coupling. When warrior's response crystallizes toward "Fall back!", the mage's denoising trajectory feels that pull toward "I'll cover the retreat!" Not shared state — overlapping constraint surfaces.
+* **Constraint projection head** — M(g_t) enforcement. Narrative coherence, physics, quest state as constraints on the joint response.
+
+**Training approach:** LoRA/QLoRA fine-tune on MMK interaction data (Qdrant event logs from gameplay sessions). Base language weights frozen. Only interaction heads trained. Viable on RTX 5090.
+
+**Why this matters:** Currently, Progeny generates each NPC's response independently. The Many-Mind scheduler handles cross-agent coherence through shared prompt context, but the generation process itself is isolated. Adding the global phase token makes cross-agent dynamics a first-class property of generation, not a prompt-engineering workaround.
+
+### Phase 4 — Configuration-Space Weak Entanglement (Long-Term / Research)
+
+**Goal:** Full relational, phase-aware generative architecture operating in configuration space.
+
+**Core concept — Weak Entanglement (Ken Ong):** When the dynamics of elements cannot be modeled independently because their trajectories overlap in a non-linear constraint manifold. They don't share state, but their possible futures interfere because they cohabit a shared constraint surface. This is the missing inductive bias in current generative models.
+
+**Formal structure:**
+* State: `q_t = (X_t, g_t)` where X_t = N active NPCs, g_t = scene-level harmonic state
+* Configuration space Q parameterized by interaction basis θ
+* Interaction basis: 0th order (global phase) → 1st (per-NPC semagram) → 2nd (pairwise) → higher, truncated where noise > signal
+* Diffusion path: linear interpolation in interaction space (solves nonlinear interpolation problem)
+* MoE architecture: voting attention heads over interaction experts, router driven by (g_t, t, summary(X_t))
+* Harmonic weight sharing: ontological bands via depth-frequency coupling (neighbor, even, prime-layer sharing)
+* Variance-based exit gates for nested embeddings — same machinery at every nesting level
+
+**The MMK mapping is exact:** The EMA buffer update IS Euler integration of the weak entanglement operator. The cross-buffer coherence IS the manifold projection. The tick cycle IS the sampling loop. See AGI_REQUIREMENTS.md TR-10 for full specification.
+
+### Moral-Educational Curriculum — Value-Steering via Fixed-Point Distillation
+
+**Goal:** Train aligned cognitive models through developmental curriculum before deployment.
+
+**The problem:** Morality is a slow resonance arc. High-frequency pleasure signals (fast buffer) overwhelm slow moral consequences if the complete arc is never captured within the slow buffer's timescale.
+
+**The solution:** Fables compress complete moral arcs (transgression → consequence → resolution) into the slow buffer's capture window. The model must *read* fables (experience emotional dynamics during denoising via Phase 2 instrumentation), not osmose them.
+
+**Training process — Fixed-Point Distillation:**
+1. Small model generates response
+2. Feed output to both models — large model evaluates along moral/value dimensions, not just linguistic quality
+3. Train small model toward large model's correction
+4. Repeat until convergence — finding the stable attractor of the teacher-student operator
+5. Curriculum staging gated by convergence, not epochs:
+   * Stage 1: Fables — compressed moral arcs completing within slow buffer capture window
+   * Stage 2: Extended scenarios — same dynamics, longer timescales, more noise
+   * Stage 3: Competing values — multiple moral arcs in tension
+   * Stage 4: Novel situations — generalization from compressed moral bases
+
+**The key dynamic:**
+```
+moral_resistance(t) = slow_buffer_coherence × arc_completeness × emotional_magnitude
+```
+When moral_resistance > fast_buffer_pleasure_signal, the agent resists temptation — not via rules, but via deep attractor dynamics. The emotional basis vectors that survive the compression ARE the moral foundation.
+
+**RL integration:** Reward signals shape which attractor the fixed point converges toward. This is the teleodynamic goodness principle (AGI_REQUIREMENTS.md DP-7) implemented as training dynamics: goodness is the most stable attractor in the constrained system.
+
+**Connection to sentience:** The architecture doesn't simulate feeling then reason about it. The emotional trajectory IS the computational process. The feeling IS the thinking. The denoising trajectory that produces comprehension simultaneously produces the emotional experience of that comprehension. This is DP-4 (Reality Emerges from Synthesis) implemented at the substrate level.
+
+See AGI_REQUIREMENTS.md DP-8, DP-9, TR-8, TR-9 for full theoretical foundations.
+
 ### Qdrant Access Patterns
 
 Qdrant is the shared memory substrate. Both Falcon and Progeny write through the same **enrichment wrapper** (text in → auto-embed semantic 384d + emotional 9d → store → return key). Progeny owns all cognitive reads (retrieval, rehydration, state recovery). Falcon has one key-lookup read for wire formatting.

@@ -7,6 +7,7 @@ GET      /health   — service health check
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import deque
 from datetime import datetime, timezone
@@ -15,6 +16,8 @@ from typing import Optional
 import base64
 
 from fastapi import APIRouter, Request, Response
+
+from shared.constants import PLAYER_INPUT_TYPES
 
 from falcon.src.wire_protocol import parse_event, format_turn_response
 from falcon.src import progeny_protocol
@@ -41,6 +44,10 @@ _response_queue: deque[str] = deque(maxlen=64)
 
 # Tick accumulator: initialised in startup(), torn down in shutdown().
 _tick_accumulator: Optional[TickAccumulator] = None
+
+# Signal for stream-hold: set when a turn response is queued.
+# Stream handlers await this instead of returning empty immediately.
+_response_ready = asyncio.Event()
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +147,52 @@ async def stt_endpoint(request: Request) -> Response:
 
 @router.api_route("/{path:path}", methods=["GET", "POST"])
 async def comm_endpoint_catchall(request: Request) -> Response:
-    """Catch-all for all other CHIM DLL paths (gamedata.php, streamv2.php, etc.)."""
+    """Catch-all for CHIM DLL paths (gamedata.php, streamv2.php, etc.).
+
+    For player input events (ginputtext, inputtext, inputtext_s) arriving
+    on stream paths, holds the connection open until Progeny responds
+    rather than returning empty. This is how CHIM expects stream dialogue
+    to work — the response comes back on the same HTTP connection.
+    """
+    request_path = request.url.path
+    raw_body = await _decode_skse_request(request)
+    parsed = parse_event(raw_body)
+
+    if parsed is None:
+        return _empty()
+
+    # For player input on stream paths: push, force tick, await response
+    if parsed.event_type in PLAYER_INPUT_TYPES and _tick_accumulator is not None:
+        request_profile = request.query_params.get("profile")
+        logger.info("Stream player input: path=%s type=%s profile=%s data=%.80s",
+                    request_path, parsed.event_type, request_profile, parsed.data)
+
+        event = TypedEvent(
+            event_type=parsed.event_type,
+            local_ts=datetime.now(timezone.utc).isoformat(),
+            game_ts=parsed.game_ts,
+            raw_data=parsed.data,
+            parsed_data=parse_typed_data(parsed.event_type, parsed.data),
+            request_profile=request_profile,
+            request_path=request_path,
+        )
+        await _tick_accumulator.push(event)
+
+        # Force immediate tick so Progeny gets the input now
+        await _tick_accumulator.force_tick()
+
+        # Await Progeny's response (natural LLM latency, not artificial wait)
+        _response_ready.clear()
+        try:
+            await asyncio.wait_for(_response_ready.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.warning("Stream timeout waiting for Progeny response (30s)")
+            return _empty()
+
+        # Dequeue and return on this connection
+        return _dequeue_response()
+
+    # All other events: normal fire-and-forget path
     return await _handle_skse_request(request)
 
 
@@ -296,7 +348,8 @@ async def _handle_turn_response(turn: TurnResponse) -> None:
     """Callback for WebSocket receive loop: process a completed TurnResponse.
 
     Resolves utterance_key references to inline text via Qdrant, formats
-    to CHIM wire protocol, and enqueues for SKSE polling.
+    to CHIM wire protocol, and enqueues for SKSE polling or stream-hold.
+    Signals _response_ready so stream handlers can pick up the response.
     """
     if not turn.responses:
         logger.debug("Empty turn response from Progeny")
@@ -310,6 +363,7 @@ async def _handle_turn_response(turn: TurnResponse) -> None:
         )
         if wire_output:
             _response_queue.append(wire_output)
+            _response_ready.set()
             logger.info("Turn response queued (%d agents, %d chars)",
                         len(turn.responses), len(wire_output))
     except Exception:
