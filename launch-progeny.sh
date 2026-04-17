@@ -53,7 +53,11 @@ done
 # --- Launch Progeny ---
 echo "[2/2] Starting Progeny..."
 cd "$PROJECT"
-QDRANT_HOST="$QDRANT_HOST" "$VENV" -m uvicorn progeny.api.server:app \
+QDRANT_HOST="$QDRANT_HOST" \
+LLM_PROFILE=mistral-nemo \
+LLM_HOST=127.0.0.1 \
+LLM_PORT=8080 \
+"$VENV" -m uvicorn progeny.api.server:app \
     --host 0.0.0.0 \
     --port 8001 \
     &

@@ -17,10 +17,17 @@ from typing import Optional
 
 from shared.constants import PLAYER_INPUT_TYPES, SESSION_TYPES
 from shared.schemas import TickPackage, TypedEvent
+from progeny.src.fact_pool import NpcBitIndex
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from progeny.src.fact_pool import FactPool
+
+# Dialogue event types eligible for behaviour adoption
+_DIALOGUE_TYPES: frozenset[str] = frozenset({"chat", "_speech"})
+
+# IDs that are never NPC agents — skip buffer creation and adoption
+_NON_AGENT_IDS: frozenset[str] = frozenset({"Player", ""})
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +52,7 @@ class AgentBuffer:
     events: list[TypedEvent] = field(default_factory=list)
     memory: TieredMemory = field(default_factory=TieredMemory)
     active_task: str = ""
+    earshot_bits: int = 0  # Bitvector: which other agents are within hearing range
 
     @property
     def dialogue_history(self) -> list[dict]:
@@ -111,6 +119,9 @@ class EventAccumulator:
         self._active_npc_ids: list[str] = []
         # Previous tick's active NPCs — for presence-change detection
         self._prev_active_npc_ids: set[str] = set()
+        # Earshot context from the most recent _speech event — who can hear
+        # the player when inputtext arrives. None = no speech context yet.
+        self._speech_earshot: Optional[dict] = None
         # ATMS fact pool — bitvector-tagged world knowledge
         self._fact_pool = fact_pool
         # Group-level shared timeline — the canonical record of "what happened"
@@ -118,6 +129,8 @@ class EventAccumulator:
         # TieredMemory pipeline as personal history. Individual NPCs carry
         # their own emotional signatures; the group memory carries the facts.
         self._group_memory = TieredMemory()
+        # Earshot proximity tracking — per-session, cleared on init/wipe
+        self._earshot_index = NpcBitIndex()
 
     def ingest(self, package: TickPackage) -> Optional[TurnContext]:
         """
@@ -135,6 +148,9 @@ class EventAccumulator:
 
         self._active_npc_ids = package.active_npc_ids
         has_player_input = False
+
+        # Coarse earshot: all active NPCs in loaded cells can hear each other
+        self._update_coarse_earshot(package.active_npc_ids)
 
         # Present NPCs for fact propagation (player + all active)
         present_ids = ["Player"] + list(package.active_npc_ids)
@@ -155,6 +171,10 @@ class EventAccumulator:
                 self._pending_player_input = event.raw_data
                 continue
 
+            # Stash _speech earshot context for gating record_player_input
+            if event_type == "_speech" and event.parsed_data:
+                self._speech_earshot = event.parsed_data
+
             # Session lifecycle
             if event_type in SESSION_TYPES:
                 self._session_events.append(event)
@@ -169,13 +189,20 @@ class EventAccumulator:
                 self._record_fact(event, present_ids)
                 continue
 
-            # Route to agent buffer based on event type
-            agent_id = self._extract_agent_id(event)
-            if agent_id:
-                self._get_or_create_buffer(agent_id).append(event)
-            else:
+            # Route to agent buffer(s) based on event type
+            agent_roles = self._extract_agent_ids(event)
+            routed = False
+            for agent_id, role in agent_roles:
+                if agent_id not in _NON_AGENT_IDS:
+                    self._get_or_create_buffer(agent_id).append(event)
+                    self._adopt_dialogue(event, agent_id, role)
+                    routed = True
+            if not routed:
                 # World/info events without a clear agent owner
                 self._world_events.append(event)
+
+            # Update earshot bitvectors from _speech companion data
+            self._update_earshot(event)
 
             # Record fact for all significant events
             self._record_fact(event, present_ids)
@@ -239,45 +266,174 @@ class EventAccumulator:
         )
 
     def record_player_input(self, text: str) -> None:
-        """Record player input into dialogue history and group timeline."""
-        # Player input goes into all active agent buffers
-        for agent_id in self._active_npc_ids:
-            buf = self._get_or_create_buffer(agent_id)
-            buf.dialogue_history.append({"role": "user", "content": text})
-        # Group timeline — everyone present heard the player
+        """Record player input into dialogue history for NPCs in earshot.
+
+        Uses the preceding _speech event's listener + companions[] to
+        determine who can hear the player. The addressee gets direct
+        speech; companions in earshot get overheard attribution. NPCs
+        outside earshot get nothing — if nobody's there to hear you,
+        nobody remembers.
+
+        Group timeline records all player speech regardless of earshot
+        (the canonical fact layer — it happened, even if not everyone heard).
+
+        Falls back to all active NPCs if no _speech context is available
+        (e.g. typed input without a preceding speech event).
+        """
+        # Group timeline — canonical record (fact layer, always recorded)
         self._group_memory.verbatim.append(
             {"role": "Player", "content": text}
         )
 
-    def _extract_agent_id(self, event: TypedEvent) -> Optional[str]:
+        # Per-NPC dialogue history — earshot-filtered (experience layer)
+        ctx = self._speech_earshot
+        if ctx is not None:
+            addressee = ctx.get("listener", "")
+            companions = ctx.get("companions", [])
+
+            # Addressee hears the player directly
+            if addressee and addressee not in _NON_AGENT_IDS:
+                buf = self._get_or_create_buffer(addressee)
+                buf.dialogue_history.append({"role": "user", "content": text})
+
+            # Companions in earshot overheard it
+            for comp in companions:
+                if comp and comp not in _NON_AGENT_IDS and comp != addressee:
+                    buf = self._get_or_create_buffer(comp)
+                    target = addressee or "someone"
+                    buf.dialogue_history.append(
+                        {"role": "user", "content": f"Player [to {target}]: {text}"}
+                    )
+        else:
+            # No speech context — fallback to all active NPCs (typed input)
+            for agent_id in self._active_npc_ids:
+                if agent_id not in _NON_AGENT_IDS:
+                    buf = self._get_or_create_buffer(agent_id)
+                    buf.dialogue_history.append({"role": "user", "content": text})
+
+    def _extract_agent_ids(self, event: TypedEvent) -> list[tuple[str, str]]:
         """
-        Extract the agent (NPC) this event is about from parsed_data.
+        Extract agents involved in this event with their perspective role.
+
+        Returns list of (agent_id, role) tuples. Role is one of:
+          "speaker"  — agent produced this dialogue (adoption: role=assistant)
+          "listener" — dialogue was directed at this agent (adoption: role=user)
+          "owner"    — non-dialogue event about this agent (no adoption)
 
         Uses structural data from Falcon's parsers — no semantic interpretation.
         """
         parsed = event.parsed_data
         if parsed is None:
-            return None
+            return []
 
         event_type = event.event_type
+        results: list[tuple[str, str]] = []
 
-        # Speech events — speaker is the agent
-        if event_type == "_speech" and "speaker" in parsed:
-            return parsed["speaker"]
+        # Speech events — speaker + listener
+        if event_type == "_speech":
+            speaker = parsed.get("speaker", "")
+            if speaker:
+                results.append((speaker, "speaker"))
+            listener = parsed.get("listener", "")
+            if listener:
+                results.append((listener, "listener"))
+            return results
+
+        # Chat events — speaker + listener
+        if event_type == "chat":
+            speaker = parsed.get("speaker", "")
+            if speaker:
+                results.append((speaker, "speaker"))
+            listener = parsed.get("listener", "")
+            if listener:
+                results.append((listener, "listener"))
+            return results
 
         # NPC registration (prefix match — DLL may send addnpc variants)
         if event_type.startswith("addnpc") and "name" in parsed:
-            return parsed["name"]
+            return [(parsed["name"], "owner")]
 
         # Stats update
         if event_type == "updatestats" and "npc_name" in parsed:
-            return parsed["npc_name"]
+            return [(parsed["npc_name"], "owner")]
 
         # Item transfer — source is the acting agent
         if event_type == "itemtransfer" and "source" in parsed:
-            return parsed["source"]
+            return [(parsed["source"], "owner")]
 
-        return None
+        return []
+
+    def _adopt_dialogue(self, event: TypedEvent, agent_id: str, role: str) -> None:
+        """Adopt dialogue into an agent's history based on perspective.
+
+        Speaker: role=assistant — the agent said this (behaviour adoption).
+        Listener: role=user with speaker attribution — directed speech received.
+        Owner: no adoption (non-dialogue events).
+        """
+        if role == "owner" or event.event_type not in _DIALOGUE_TYPES:
+            return
+        parsed = event.parsed_data
+        if parsed is None:
+            return
+        speech = parsed.get("speech", "")
+        if not speech:
+            return
+
+        buf = self._get_or_create_buffer(agent_id)
+        if role == "speaker":
+            buf.dialogue_history.append({"role": "assistant", "content": speech})
+        elif role == "listener":
+            speaker_name = parsed.get("speaker", "Unknown")
+            buf.dialogue_history.append(
+                {"role": "user", "content": f"{speaker_name} [to you]: {speech}"}
+            )
+
+    # ------------------------------------------------------------------
+    # Earshot proximity tracking
+    # ------------------------------------------------------------------
+
+    def _update_earshot(self, event: TypedEvent) -> None:
+        """Update earshot bitvectors from _speech companion data.
+
+        The SKSE _speech event carries companions[] — the NPCs within
+        hearing distance. Set reciprocal earshot bits for the speaker
+        and all companions so each knows who else was present.
+        """
+        if event.event_type != "_speech" or event.parsed_data is None:
+            return
+        parsed = event.parsed_data
+        speaker = parsed.get("speaker", "")
+        companions = parsed.get("companions", [])
+
+        # Build earshot group: speaker + companions, excluding non-agents
+        earshot_group: list[str] = []
+        if speaker and speaker not in _NON_AGENT_IDS:
+            earshot_group.append(speaker)
+        for comp in companions:
+            if comp and comp not in _NON_AGENT_IDS:
+                earshot_group.append(comp)
+        if not earshot_group:
+            return
+
+        group_mask = self._earshot_index.mask_for_all(earshot_group)
+        for name in earshot_group:
+            buf = self._get_or_create_buffer(name)
+            buf.earshot_bits |= group_mask
+
+    def _update_coarse_earshot(self, active_npc_ids: list[str]) -> None:
+        """Set coarse earshot bits from loaded-cell proximity.
+
+        All active NPCs in the same loaded cells are potential earshot
+        candidates. Only updates agents that already have buffers to
+        avoid creating empty ones from bulk NPC lists.
+        """
+        npc_ids = [nid for nid in active_npc_ids if nid not in _NON_AGENT_IDS]
+        if not npc_ids:
+            return
+        group_mask = self._earshot_index.mask_for_all(npc_ids)
+        for name in npc_ids:
+            if name in self._agent_buffers:
+                self._agent_buffers[name].earshot_bits |= group_mask
 
     def _get_or_create_buffer(self, agent_id: str) -> AgentBuffer:
         """Get or create an agent buffer."""
@@ -327,3 +483,5 @@ class EventAccumulator:
         self._group_memory = TieredMemory()
         self._prev_active_npc_ids = set()
         self.current_location = "Unknown"
+        self._earshot_index = NpcBitIndex()
+        self._speech_earshot = None

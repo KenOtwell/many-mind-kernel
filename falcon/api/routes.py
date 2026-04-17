@@ -181,13 +181,14 @@ async def comm_endpoint_catchall(request: Request) -> Response:
         # Force immediate tick so Progeny gets the input now
         await _tick_accumulator.force_tick()
 
-        # Await Progeny's response (natural LLM latency, not artificial wait)
+        # Await Progeny's response — no artificial timeout.
+        # The LLM takes as long as it takes. The only hard cap is a
+        # connection-level failure (WebSocket drop, Progeny crash),
+        # which surfaces as _response_ready never being set.
+        # CHIM's own HTTP timeout (~120s default) provides the outer
+        # safety net; we don't second-guess it here.
         _response_ready.clear()
-        try:
-            await asyncio.wait_for(_response_ready.wait(), timeout=30.0)
-        except asyncio.TimeoutError:
-            logger.warning("Stream timeout waiting for Progeny response (30s)")
-            return _empty()
+        await _response_ready.wait()
 
         # Dequeue and return on this connection
         return _dequeue_response()
