@@ -3,12 +3,14 @@ Falcon API routes.
 
 GET|POST /comm.php — SKSE compatibility endpoint (the main interface)
 GET|POST /stt.php  — speech-to-text endpoint (CHIM open mic audio)
+GET|POST /vsx.php  — diagnostic stub for legacy CHIM SKVA Synth uploads
 GET      /health   — service health check
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import deque
 from datetime import datetime, timezone
 from typing import Optional
@@ -23,6 +25,7 @@ from falcon.src.wire_protocol import parse_event, format_turn_response
 from falcon.src import progeny_protocol
 from falcon.src.event_parsers import parse_typed_data
 from falcon.src.tick_accumulator import TickAccumulator
+from falcon.src import tts as tts_service
 from shared.schemas import TypedEvent, TickPackage, TurnResponse
 from shared.constants import COLLECTION_NPC_MEMORIES
 from shared.config import settings
@@ -55,13 +58,31 @@ _response_ready = asyncio.Event()
 # ---------------------------------------------------------------------------
 
 async def startup() -> None:
-    """Initialise the tick accumulator (called from lifespan in server.py)."""
+    """Initialise the tick accumulator (called from lifespan in server.py).
+
+    Also probes xVASynth so we know up front whether the TTS pipeline is
+    available, rather than failing silently mid-turn.
+    """
     global _tick_accumulator
     _tick_accumulator = TickAccumulator(
         interval_seconds=settings.falcon.tick_interval_seconds,
         on_package=_process_tick,
     )
     await _tick_accumulator.start()
+
+    # xVASynth health probe — non-fatal. A miss here means dialogue will
+    # still be delivered as text but no audio will be generated.
+    try:
+        ok = await tts_service.health_check()
+        if ok:
+            logger.info("xVASynth health: OK (%s)", tts_service.XVASYNTH_URL)
+        else:
+            logger.warning(
+                "xVASynth health: UNREACHABLE (%s) — TTS will be skipped per turn",
+                tts_service.XVASYNTH_URL,
+            )
+    except Exception:
+        logger.exception("xVASynth health probe raised")
 
 
 async def shutdown() -> None:
@@ -99,6 +120,27 @@ async def comm_endpoint(request: Request) -> Response:
     Also accepts POST for forward compatibility and testing.
     """
     return await _handle_skse_request(request)
+
+
+@router.api_route("/vsx.php", methods=["GET", "POST"])
+async def vsx_endpoint(request: Request) -> Response:
+    """Diagnostic stub for CHIM SKVA Synth audio uploads.
+
+    Original CHIM architecture has the SKVA SKSE plugin POST generated WAVs
+    to /vsx.php on the PHP server. Falcon owns TTS now (see Living Doc
+    "TTS — NPC Voice Output"), so this endpoint should ideally never fire.
+    If it does, SKVA is still active and racing Falcon — log loudly so we
+    can identify and disable the parallel path in CHIM conf.
+    """
+    body_len = int(request.headers.get("content-length", 0) or 0)
+    logger.warning(
+        "SKVA hit /vsx.php (parallel TTS path active!) method=%s content-type=%s bytes=%d query=%s",
+        request.method,
+        request.headers.get("content-type", ""),
+        body_len,
+        dict(request.query_params),
+    )
+    return _empty()
 
 
 @router.api_route("/stt.php", methods=["GET", "POST"])
@@ -153,8 +195,20 @@ async def comm_endpoint_catchall(request: Request) -> Response:
     on stream paths, holds the connection open until Progeny responds
     rather than returning empty. This is how CHIM expects stream dialogue
     to work — the response comes back on the same HTTP connection.
+
+    Catch-all hits are logged at DEBUG (every SKSE poll lands here, so INFO
+    is too loud). The SKVA tripwire (`/vsx.php`) has its own dedicated route
+    above and logs at WARN — that's the signal we still want surfaced.
     """
     request_path = request.url.path
+    body_len = int(request.headers.get("content-length", 0) or 0)
+    logger.debug(
+        "Catchall: path=%s method=%s content-type=%s bytes=%d",
+        request_path,
+        request.method,
+        request.headers.get("content-type", ""),
+        body_len,
+    )
     raw_body = await _decode_skse_request(request)
     parsed = parse_event(raw_body)
 
@@ -181,12 +235,15 @@ async def comm_endpoint_catchall(request: Request) -> Response:
         # Force immediate tick so Progeny gets the input now
         await _tick_accumulator.force_tick()
 
-        # Await Progeny's response (natural LLM latency, not artificial wait)
+        # Await Progeny's response (natural LLM latency, not artificial wait).
+        # 180s accommodates multi-agent prompt generation on Beelink hardware.
+        # Return the wire response directly on this stream connection —
+        # CHIM does NOT poll `request` while the stream is held open.
         _response_ready.clear()
         try:
-            await asyncio.wait_for(_response_ready.wait(), timeout=30.0)
+            await asyncio.wait_for(_response_ready.wait(), timeout=180.0)
         except asyncio.TimeoutError:
-            logger.warning("Stream timeout waiting for Progeny response (30s)")
+            logger.warning("Stream timeout waiting for Progeny response (180s)")
             return _empty()
 
         # Dequeue and return on this connection
@@ -358,14 +415,30 @@ async def _handle_turn_response(turn: TurnResponse) -> None:
     try:
         await _resolve_utterance_keys(turn)
 
-        wire_output = format_turn_response(
-            [r.model_dump() for r in turn.responses]
-        )
+        response_dicts = [r.model_dump() for r in turn.responses]
+
+        # Falcon-owned TTS per Living Doc "TTS — NPC Voice Output".
+        # Synthesize WAVs into soundcache/ BEFORE queueing the wire response
+        # so SKSE finds audio waiting when it polls. Failures are non-fatal
+        # — text dialogue still ships even if TTS is down.
+        t_synth = time.perf_counter()
+        try:
+            tts_results = await tts_service.synthesize_responses(response_dicts)
+            tts_elapsed_ms = (time.perf_counter() - t_synth) * 1000
+            ok_count = sum(1 for v in tts_results.values() if v)
+            logger.info(
+                "TTS turn complete: %d/%d agents synthesized in %.0fms",
+                ok_count, len(tts_results), tts_elapsed_ms,
+            )
+        except Exception:
+            logger.exception("TTS synthesis raised — shipping text-only response")
+
+        wire_output = format_turn_response(response_dicts)
         if wire_output:
             _response_queue.append(wire_output)
             _response_ready.set()
-            logger.info("Turn response queued (%d agents, %d chars)",
-                        len(turn.responses), len(wire_output))
+            logger.info("Turn response queued (%d agents, %d chars):\n%s",
+                        len(turn.responses), len(wire_output), wire_output)
     except Exception:
         logger.exception("Failed to handle turn response")
 
