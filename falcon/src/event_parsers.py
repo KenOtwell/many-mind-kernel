@@ -30,7 +30,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def parse_speech(data: str) -> Optional[dict]:
-    """_speech → SpeechData dict. JSON payload."""
+    """_speech → SpeechData dict. JSON payload.
+
+    `audios` is the Bethesda voice file path SKSE just read (or null for
+    LLM / player input). We keep it as a typed field so downstream code
+    can reference the audio target without re-parsing the JSON blob.
+    """
     try:
         parsed = json.loads(data)
     except json.JSONDecodeError as exc:
@@ -48,6 +53,9 @@ def parse_speech(data: str) -> Optional[dict]:
     except (TypeError, ValueError):
         distance = 0.0
 
+    audios_raw = parsed.get("audios")
+    audios = str(audios_raw) if audios_raw else None
+
     return {
         "listener": str(parsed.get("listener", "")),
         "speaker":  str(parsed.get("speaker",  "")),
@@ -55,6 +63,7 @@ def parse_speech(data: str) -> Optional[dict]:
         "location": str(parsed.get("location", "")),
         "companions": companions,
         "distance": distance,
+        "audios":   audios,
     }
 
 

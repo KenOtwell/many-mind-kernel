@@ -150,6 +150,13 @@ class SpeechData(BaseModel):
 
     companions[] contains names of nearby NPCs — used by Progeny for
     Many-Mind scheduling (Chorus tier candidates).
+
+    audios is the Bethesda voice file path SKSE just read for the canned
+    line (e.g. `Data\\Sound\\Voice\\Dawnguard.esm\\MaleEvenToned\\...wav`).
+    Present for vanilla / CHIM canned dialogue; None for LLM-mediated
+    utterances and player input. Held as a typed field for future TTS
+    delivery work — we'll need it to route synthesized audio at the path
+    Skyrim is actually about to play.
     """
     listener: str
     speaker: str
@@ -157,6 +164,7 @@ class SpeechData(BaseModel):
     location: str
     companions: list[str] = Field(default_factory=list)
     distance: float = 0.0
+    audios: Optional[str] = None
 
 
 class NpcRegistration(BaseModel):
