@@ -41,6 +41,10 @@ class TickAccumulator:
         self._lock = asyncio.Lock()
         self._buffer: list[TypedEvent] = []
         self._active_npc_ids: set[str] = set()
+        # NPC name -> Bethesda voicetype (e.g. "maleeventoned"), sourced from
+        # SKVA Synth's /vsx.php POSTs at session init. Used by the TTS path to
+        # write generated WAVs to the placeholder SKSE reads from.
+        self._npc_voicetypes: dict[str, str] = {}
         self._task: Optional[asyncio.Task] = None
         self._last_tick_time: float = 0.0
 
@@ -99,7 +103,28 @@ class TickAccumulator:
             prev_count = len(self._active_npc_ids)
             prev_names = list(self._active_npc_ids) if prev_count <= 10 else []
             self._active_npc_ids.clear()
+            self._npc_voicetypes.clear()
         logger.info("NPC registry cleared (was %d NPCs: %s)", prev_count, prev_names)
+
+    async def register_voicetype(self, npc_name: str, voicetype: str) -> None:
+        """Register a voicetype for an NPC (sourced from SKVA's /vsx.php upload).
+
+        Only logs when the mapping changes — SKVA may POST the same vanilla
+        sample multiple times per session.
+        """
+        async with self._lock:
+            previous = self._npc_voicetypes.get(npc_name)
+            self._npc_voicetypes[npc_name] = voicetype
+        if previous != voicetype:
+            logger.info("Voicetype registered: %s -> %s", npc_name, voicetype)
+
+    def get_voicetype(self, npc_name: str) -> Optional[str]:
+        """Best-effort sync getter for an NPC's voicetype, or None if unknown.
+
+        No lock taken — dict reads are atomic in CPython and the worst case is
+        a stale read on the same tick, which TTS handles via its fallback path.
+        """
+        return self._npc_voicetypes.get(npc_name)
 
     def get_active_npc_count(self) -> int:
         """Best-effort sync count for the health endpoint (no lock taken)."""

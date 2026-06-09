@@ -3,13 +3,15 @@ Falcon API routes.
 
 GET|POST /comm.php — SKSE compatibility endpoint (the main interface)
 GET|POST /stt.php  — speech-to-text endpoint (CHIM open mic audio)
-GET|POST /vsx.php  — diagnostic stub for legacy CHIM SKVA Synth uploads
+GET|POST /vsx.php  — SKVA Synth voice placeholder writer (creates the
+                    per-voicetype WAV file that SKSE loads for AI dialogue)
 GET      /health   — service health check
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -124,22 +126,53 @@ async def comm_endpoint(request: Request) -> Response:
 
 @router.api_route("/vsx.php", methods=["GET", "POST"])
 async def vsx_endpoint(request: Request) -> Response:
-    """Diagnostic stub for CHIM SKVA Synth audio uploads.
+    """CHIM SKVA Synth voice placeholder writer.
 
-    Original CHIM architecture has the SKVA SKSE plugin POST generated WAVs
-    to /vsx.php on the PHP server. Falcon owns TTS now (see Living Doc
-    "TTS — NPC Voice Output"), so this endpoint should ideally never fire.
-    If it does, SKVA is still active and racing Falcon — log loudly so we
-    can identify and disable the parallel path in CHIM conf.
+    SKVA's `sendAllVoices()` POSTs each NPC's vanilla voice sample at
+    session init with query params (`codename=<NPC>`, `oname=<vanilla
+    Bethesda voice path>`) and the audio in a multipart body. We:
+
+      1. Extract voicetype from `oname` (e.g. "maleeventoned").
+      2. Save the multipart audio to the SKSE replacement path at
+         `<AIAGENT_VOICE_DIR>/<voicetype>/<voicetype>.wav` so the file
+         exists for SKSE to load when AIAgent.esp dialogue triggers.
+      3. Register `npc_name → voicetype` with the tick accumulator so
+         later TTS turns know which placeholder path to overwrite.
+
+    On subsequent LLM turns, tts.py overwrites the same placeholder with
+    synthesized audio.
     """
+    query = dict(request.query_params)
+    codename = query.get("codename", "").strip()
+    oname = query.get("oname", "").strip()
+    content_type = request.headers.get("content-type", "")
     body_len = int(request.headers.get("content-length", 0) or 0)
-    logger.warning(
-        "SKVA hit /vsx.php (parallel TTS path active!) method=%s content-type=%s bytes=%d query=%s",
-        request.method,
-        request.headers.get("content-type", ""),
-        body_len,
-        dict(request.query_params),
+
+    voicetype = tts_service.extract_voicetype_from_oname(oname)
+    if not voicetype:
+        logger.warning(
+            "vsx: cannot extract voicetype — oname=%r codename=%r",
+            oname, codename,
+        )
+        return _empty()
+
+    # DISABLED: previously wrote the multipart audio body to
+    # AIAgent.esp/<voicetype>/<voicetype>.wav. That broke CHIM's own canned
+    # dialogue audio (NPCs lip-sync but produce silence) without enabling
+    # LLM dialogue playback. The placeholder mechanism is wrong; pivoting.
+    #
+    # We keep voicetype registration since the npc->voicetype mapping is
+    # still useful for any future delivery path (voicetype-aware xVASynth
+    # model selection, etc.).
+    logger.info(
+        "vsx: SKVA upload (write disabled) — codename=%s voicetype=%s "
+        "content-type=%s bytes=%d",
+        codename or "?", voicetype, content_type, body_len,
     )
+
+    if codename and _tick_accumulator is not None:
+        await _tick_accumulator.register_voicetype(codename, voicetype)
+
     return _empty()
 
 
@@ -418,17 +451,33 @@ async def _handle_turn_response(turn: TurnResponse) -> None:
         response_dicts = [r.model_dump() for r in turn.responses]
 
         # Falcon-owned TTS per Living Doc "TTS — NPC Voice Output".
-        # Synthesize WAVs into soundcache/ BEFORE queueing the wire response
-        # so SKSE finds audio waiting when it polls. Failures are non-fatal
-        # — text dialogue still ships even if TTS is down.
+        # Resolve each agent's voicetype from the tick accumulator (populated
+        # by SKVA's /vsx.php POSTs at session init) so synthesize_responses
+        # can write directly to the SKSE-expected placeholder path. Agents
+        # missing a voicetype fall back to a soundcache file — useful for
+        # offline verification but inaudible in-game until /vsx.php fires.
+        # Failures are non-fatal: text dialogue still ships even if TTS is
+        # down.
+        voicetypes: dict[str, str] = {}
+        if _tick_accumulator is not None:
+            for r in response_dicts:
+                agent = r.get("agent_id")
+                if not agent:
+                    continue
+                vt = _tick_accumulator.get_voicetype(agent)
+                if vt:
+                    voicetypes[agent] = vt
+
         t_synth = time.perf_counter()
         try:
-            tts_results = await tts_service.synthesize_responses(response_dicts)
+            tts_results = await tts_service.synthesize_responses(
+                response_dicts, voicetypes=voicetypes,
+            )
             tts_elapsed_ms = (time.perf_counter() - t_synth) * 1000
             ok_count = sum(1 for v in tts_results.values() if v)
             logger.info(
-                "TTS turn complete: %d/%d agents synthesized in %.0fms",
-                ok_count, len(tts_results), tts_elapsed_ms,
+                "TTS turn complete: %d/%d agents synthesized in %.0fms (voicetypes resolved=%d)",
+                ok_count, len(tts_results), tts_elapsed_ms, len(voicetypes),
             )
         except Exception:
             logger.exception("TTS synthesis raised — shipping text-only response")
