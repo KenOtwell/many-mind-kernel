@@ -15,6 +15,12 @@ LLAMA_SERVER="$HOME/llama.cpp/build/bin/llama-server"
 MODEL="$HOME/models/gguf/mistral-nemo-12b-instruct-q8.gguf"
 VENV="$HOME/Neo/.venv/bin/python"
 PROJECT="$HOME/Neo"
+LOG_DIR="$HOME/logs"
+
+# Ensure log directory exists
+mkdir -p "$LOG_DIR"
+LLAMA_LOG="$LOG_DIR/llama-server.log"
+PROGENY_LOG="$LOG_DIR/progeny.log"
 
 echo "=== MMK Progeny Stack ==="
 echo "  Qdrant:  $QDRANT_HOST:6333"
@@ -28,7 +34,7 @@ pkill -f "uvicorn progeny.api.server" 2>/dev/null || true
 sleep 1
 
 # --- Launch llama-server ---
-echo "[1/2] Starting llama-server..."
+echo "[1/2] Starting llama-server... (log: $LLAMA_LOG)"
 "$LLAMA_SERVER" \
     -m "$MODEL" \
     --host 0.0.0.0 \
@@ -36,7 +42,7 @@ echo "[1/2] Starting llama-server..."
     -ngl 99 \
     -c 8192 \
     --no-mmap \
-    &
+    >> "$LLAMA_LOG" 2>&1 &
 LLAMA_PID=$!
 echo "  llama-server PID: $LLAMA_PID"
 
@@ -51,7 +57,7 @@ for i in $(seq 1 60); do
 done
 
 # --- Launch Progeny ---
-echo "[2/2] Starting Progeny..."
+echo "[2/2] Starting Progeny... (log: $PROGENY_LOG)"
 cd "$PROJECT"
 QDRANT_HOST="$QDRANT_HOST" \
 LLM_PROFILE=mistral-nemo \
@@ -60,7 +66,7 @@ LLM_PORT=8080 \
 "$VENV" -m uvicorn progeny.api.server:app \
     --host 0.0.0.0 \
     --port 8001 \
-    &
+    >> "$PROGENY_LOG" 2>&1 &
 PROGENY_PID=$!
 echo "  Progeny PID: $PROGENY_PID"
 
@@ -78,6 +84,10 @@ echo "  Progeny:      PID $PROGENY_PID (port 8001)"
 echo ""
 echo "To stop: kill $LLAMA_PID $PROGENY_PID"
 echo "Or:      pkill -f llama-server; pkill -f 'uvicorn progeny'"
+echo ""
+echo "Logs:"
+echo "  tail -f $PROGENY_LOG"
+echo "  tail -f $LLAMA_LOG"
 
 # Keep script alive so both background processes stay running
 wait

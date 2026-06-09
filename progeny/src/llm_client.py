@@ -43,7 +43,7 @@ class LLMConfig:
     """
     host: str = field(default_factory=lambda: _env("LLM_HOST", "127.0.0.1"))
     port: int = field(default_factory=lambda: _env_int("LLM_PORT", 8080))
-    timeout_seconds: float = field(default_factory=lambda: _env_float("LLM_TIMEOUT", 60.0))
+    timeout_seconds: float = field(default_factory=lambda: _env_float("LLM_TIMEOUT", 180.0))
     retry_attempts: int = field(default_factory=lambda: _env_int("LLM_RETRIES", 1))
 
     @property

@@ -437,10 +437,13 @@ async def _handle_turn_response(turn: TurnResponse) -> None:
 
     Resolves utterance_key references to inline text via Qdrant, formats
     to CHIM wire protocol, and enqueues for SKSE polling or stream-hold.
-    Signals _response_ready so stream handlers can pick up the response.
+    Always signals _response_ready so stream handlers unblock — even for
+    empty responses (0 agents scheduled). Otherwise the stream handler
+    hangs until timeout when Progeny has no agents to schedule.
     """
     if not turn.responses:
         logger.debug("Empty turn response from Progeny")
+        _response_ready.set()  # Unblock stream handler — empty is still an answer
         return
 
     try:
@@ -483,11 +486,12 @@ async def _handle_turn_response(turn: TurnResponse) -> None:
         wire_output = format_turn_response(response_dicts)
         if wire_output:
             _response_queue.append(wire_output)
-            _response_ready.set()
             logger.info("Turn response queued (%d agents, %d chars):\n%s",
                         len(turn.responses), len(wire_output), wire_output)
     except Exception:
         logger.exception("Failed to handle turn response")
+    finally:
+        _response_ready.set()  # Always unblock, even on error
 
 
 async def _resolve_utterance_keys(turn: TurnResponse) -> None:

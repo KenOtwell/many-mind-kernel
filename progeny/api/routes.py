@@ -335,6 +335,7 @@ async def _run_group(
         emotional_deltas=emotional_deltas,
         fact_pool=_fact_pool,
         memory_bundles=memory_bundles,
+        speech_earshot=_accumulator._speech_earshot,
     )
 
     try:

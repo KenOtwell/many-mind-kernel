@@ -79,6 +79,23 @@ JOY=joy SAF=safety RES=residual. Tension = how volatile they appear.
     Only YOU (as that agent's mind) see their full internal state.
     Other agents see only the group_display surface.
 
+SPEAKING ROLES:
+  Each agent has a speaking_role: "addressee", "bystander", or "group_addressed".
+  Only the addressee's voice is heard in-game. Choose carefully.
+  - addressee: The player is talking to you. Respond fully with utterance, \
+actor_value_deltas, actions, and all other fields appropriate to your tier.
+  - bystander: The player is talking to someone else. Do NOT produce an \
+utterance — your voice won't be heard this turn. Instead, update your internal \
+state: actor_value_deltas, updated_harmonics, actions (if you'd physically \
+react), new_memories. You're still thinking and feeling — you just aren't \
+speaking. On a future turn you may be addressed and can reference what you \
+observed (visible in group_context.shared_recent).
+  - group_addressed: The player spoke to the group without targeting anyone \
+specifically. You may respond with an utterance, but differentiate your \
+perspective — don't echo what another NPC would likely say. Contribute your \
+unique viewpoint, knowledge, or reaction. If you have nothing distinct to add, \
+brief acknowledgment or just actor_value_deltas is fine.
+
 RESPONSE FORMAT: Return a JSON object with a "responses" array. One entry per \
 agent listed, in order. Scale detail to tier:
   Tier 0: utterance + actor_value_deltas + actions + updated_harmonics + new_memories
@@ -96,6 +113,50 @@ INSTRUCTION_PROMPT = (
     "For each agent listed, produce a response appropriate to their tier "
     "and current situation. Return only valid JSON matching the response format."
 )
+
+
+# ---------------------------------------------------------------------------
+# Addressee detection — who is the player talking to?
+# ---------------------------------------------------------------------------
+
+def _resolve_addressee(
+    player_input: str,
+    roster: list[ScheduledAgent],
+    speech_earshot: dict | None = None,
+) -> str | None:
+    """Determine which NPC the player is addressing.
+
+    Resolution order:
+      1. Name match in player input (fuzzy: case-insensitive substring)
+      2. Last NPC who spoke to the player (from _speech earshot context)
+      3. None → group-addressed (no specific target identified)
+
+    Returns the agent_id of the addressee, or None if the player is
+    addressing the group (triggers group_addressed role for all NPCs).
+    """
+    if not roster:
+        return None
+
+    roster_ids = [a.agent_id for a in roster]
+    input_lower = player_input.lower()
+
+    # 1. Name mentioned in player input
+    for agent_id in roster_ids:
+        # Match on first name or full name, case-insensitive
+        name_lower = agent_id.lower()
+        # Try full name and first token (handles "Afelir Morel" → "afelir")
+        first_name = name_lower.split()[0] if " " in name_lower else name_lower
+        if name_lower in input_lower or first_name in input_lower:
+            return agent_id
+
+    # 2. Last speaker to the player (from _speech earshot)
+    if speech_earshot is not None:
+        last_speaker = speech_earshot.get("speaker", "")
+        if last_speaker and last_speaker in roster_ids:
+            return last_speaker
+
+    # 3. No specific target → group-addressed
+    return None
 
 
 # Tier-scaled fact limits for per-agent private knowledge
@@ -117,6 +178,7 @@ def build_prompt(
     emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
     fact_pool: FactPool | None = None,
     memory_bundles: dict[str, MemoryBundle] | None = None,
+    speech_earshot: dict | None = None,
 ) -> list[dict[str, str]]:
     """
     Build the 2-message chat completion array for a dispatch group.
@@ -139,7 +201,7 @@ def build_prompt(
     # Message 2: data payload + instruction — rebuilt fresh every turn
     data_payload = _build_data_payload(
         turn_context, roster, all_active_npc_ids, harmonic_state, emotional_deltas,
-        fact_pool, memory_bundles,
+        fact_pool, memory_bundles, speech_earshot,
     )
     user_content = json.dumps(data_payload, indent=None) + "\n\n" + INSTRUCTION_PROMPT
 
@@ -179,6 +241,7 @@ def _build_data_payload(
     emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
     fact_pool: FactPool | None = None,
     memory_bundles: dict[str, MemoryBundle] | None = None,
+    speech_earshot: dict | None = None,
 ) -> dict[str, Any]:
     """Assemble the JSON data payload for message 2.
 
@@ -199,6 +262,9 @@ def _build_data_payload(
     # Urgency: 0.0 = calm (full prompt), 1.0 = crisis (maximum truncation)
     urg = _urgency(emotional_deltas)
 
+    # Addressee detection — who is the player talking to?
+    addressee_id = _resolve_addressee(ctx.player_input, roster, speech_earshot)
+
     # --- Layer 1: Group context (shared by all present NPCs) ---
     group_context = _build_group_context(
         ctx, present_ids, harmonic_state, emotional_deltas, fact_pool, urg,
@@ -212,6 +278,14 @@ def _build_data_payload(
             scheduled, ctx, present_ids, harmonic_state, emotional_deltas,
             fact_pool, bundle, urg,
         )
+        # Speaking role: addressee responds fully, bystanders stay quiet,
+        # group_addressed means everyone can speak but should differentiate.
+        if addressee_id is None:
+            agent_block["speaking_role"] = "group_addressed"
+        elif scheduled.agent_id == addressee_id:
+            agent_block["speaking_role"] = "addressee"
+        else:
+            agent_block["speaking_role"] = "bystander"
         agents.append(agent_block)
 
     payload: dict[str, Any] = {

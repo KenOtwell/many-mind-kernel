@@ -403,8 +403,16 @@ class EventAccumulator:
         Speaker: role=assistant — the agent said this (behaviour adoption).
         Listener: role=user with speaker attribution — directed speech received.
         Owner: no adoption (non-dialogue events).
+
+        _speech events are handled separately by record_npc_speech() which
+        uses the clean parsed speech text instead of the raw JSON envelope.
+        This method only handles chat events for speaker/listener adoption.
         """
         if role == "owner" or event.event_type not in _DIALOGUE_TYPES:
+            return
+        # _speech adoption is handled by record_npc_speech() — skip here
+        # to avoid double-recording and to use clean parsed text.
+        if event.event_type == "_speech":
             return
         parsed = event.parsed_data
         if parsed is None:
