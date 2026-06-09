@@ -129,11 +129,22 @@ def process_inbound(
         for agent_id in turn_context.active_npc_ids:
             pairs.append((agent_id, turn_context.player_input))
 
-    # NPC _speech events affect the speaking agent's own state
+    # NPC _speech events affect the speaking agent's own state.
+    # Use the parsed speech text — embedding the full JSON (audios path,
+    # companions list, etc.) pollutes the semagram with non-utterance noise.
+    # Falls back to raw_data only if the parser failed to extract a clean
+    # speech field, which should be vanishingly rare for valid _speech events.
     for agent_id, buf in turn_context.agent_buffers.items():
         for event in buf.events:
-            if event.event_type == "_speech" and event.raw_data:
-                pairs.append((agent_id, event.raw_data))
+            if event.event_type != "_speech":
+                continue
+            speech = ""
+            if event.parsed_data:
+                speech = (event.parsed_data.get("speech") or "").strip()
+            if not speech:
+                speech = (event.raw_data or "").strip()
+            if speech:
+                pairs.append((agent_id, speech))
 
     if not pairs:
         return {}

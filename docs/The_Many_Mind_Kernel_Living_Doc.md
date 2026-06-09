@@ -2304,6 +2304,112 @@ Cloud (requires API keys):
 
 **Player TTS** (optional): CHIM also supports TTS for the player's own voice — the player's typed/spoken text is synthesized and played back in-game. Configured via `$TTSFUNCTION_PLAYER`. Not critical for MMK but available.
 
+### TTS — Falcon ↔ xVASynth Implementation Notes (May 2026)
+*First end-to-end synthesis verified May 9 2026. This section captures the launch procedure, the HTTP payload shape that actually works, the gotchas the docs/UI did not make obvious, and the remaining SKSE-side delivery gap.*
+
+#### Headless xVASynth launch (Gaming PC, 9950X3D, CPU build)
+
+The Electron `xVASynth.exe` is just a UI wrapper around a PyInstaller-bundled HTTP server at `resources/app/cpython_cpu/server.exe` (CPU build) or `resources/app/cpython_gpu/server.exe` (CUDA build). The server binds to `0.0.0.0:8008` (`resources/app/server.py:501`: `ThreadedHTTPServer(("",8008), Handler)`). We run the CPU build because the GPU is committed to Skyrim VR.
+
+Critical: `resources/app/server.py:12` does `PROD = 'xVASynth.exe' in os.listdir(".")`. The launching cwd must contain `xVASynth.exe` (i.e. the `v3.0.0\` root) or the script enters dev mode and looks for assets at the wrong relative paths.
+
+Launch command used successfully:
+
+```
+$env:OMP_NUM_THREADS = "8"
+$env:MKL_NUM_THREADS = "8"
+$env:OMP_WAIT_POLICY = "PASSIVE"
+$env:MKL_DYNAMIC     = "FALSE"
+cmd /c start "" /affinity FF00 /D "C:\Users\Ken\Projects\xVASynth v3.0.0\v3.0.0" /B ^
+  "C:\Users\Ken\Projects\xVASynth v3.0.0\v3.0.0\resources\app\cpython_cpu\server.exe"
+```
+
+Readiness signal: `Models ready` / `Server ready` in `C:\Users\Ken\Projects\xVASynth v3.0.0\v3.0.0\server.log`, then `Test-NetConnection 127.0.0.1 -Port 8008 -InformationLevel Quiet` returns `True`.
+
+#### 9950X3D affinity reasoning
+
+The 9950X3D has two CCDs. CCD0 (cores 0–7) carries the 3D V-Cache (~96MB L3, lower max boost). CCD1 (cores 8–15) is standard L3 with higher boost clocks. Pin xVASynth to CCD1 (`/affinity FF00`):
+
+* Skyrim VR's render/sim/script threads keep the V-Cache CCD.
+* xVASynth is bursty and would otherwise evict render-thread cache lines mid-frame.
+* Higher CCD1 boost partially offsets the loss of V-Cache for compute-bound BLAS kernels.
+* xVASynth is small-batch latency-bound, so 8 threads is the sweet spot; `OMP_WAIT_POLICY=PASSIVE` keeps idle CPU near zero between synth calls.
+
+#### Falcon's HTTP call shape (the one that actually works)
+
+Mirroring xVASynth's UI (`resources/app/javascript/script.js:769-785`) precisely is the safe path. Two endpoints, in order on first synth per voice:
+
+**`POST /loadModel`** — send the model path without extension. xVASynth's handler does `models_manager.load_model(modelType, ckpt+".pt", ...)`, appending `.pt` to the weights and reading the same-stem `.json` sidecar for metadata. The sidecar's `games[0].base_speaker_emb` populates `self.base_emb` on the loaded xVAPitch instance.
+
+```
+{
+  "model": "<absolute-path-without-ext>",
+  "modelType": "xVAPitch",
+  "base_lang": "en",
+  "pluginsContext": "{}"
+}
+```
+
+For `sk_malenord`, that means sending `...\models\skyrim\sk_malenord`, not `...\sk_malenord.json`.
+
+**`POST /synthesize`** — mirror the UI. For xVAPitch:
+
+```
+{
+  "modelType": "xVAPitch",
+  "sequence": " <text> ",
+  "pace": 1.0,
+  "outfile": "<soundcache-path>/<filename>.wav",
+  "vocoder": "n/a",
+  "base_lang": "en",
+  "base_emb": "",
+  "useSR": 0,
+  "useCleanup": 0,
+  "pluginsContext": "{}"
+}
+```
+
+Notes:
+
+* `vocoder: "n/a"` is correct for xVAPitch — the UI sends literally that. No `/setVocoder` call is needed for xVAPitch.
+* `base_emb: ""` means “use the model's own embedding from the JSON sidecar.” If overriding for voice crafting, xVASynth expects a comma-separated string of floats, not a JSON array (`resources/app/python/xvapitch/model.py:678` does `base_emb.split(",")`).
+* `useSR` and `useCleanup` both invoke pydub/ffmpeg. Safe to leave at `0` — pydub is never invoked when both are off.
+
+#### Bugs hit and resolved (post-mortem)
+
+1. `AttributeError: 'xVAPitch' object has no attribute 'base_emb'`
+   Root cause: Falcon sent the `.json` path to `/loadModel`. xVASynth appended `.pt`, producing a silently wrong weight path, so the JSON sidecar never initialized `self.base_emb`.
+2. Synthesis succeeded but produced pure noise
+   Same root cause. Without a valid `self.base_emb`, the xVAPitch acoustic model produced junk mel output, which decoded to junk audio.
+3. Diversion into `/setVocoder qnd`
+   Wrong turn. General xVASynth can use external vocoders this way, but xVAPitch itself expects `vocoder: "n/a"` and already bundles what it needs.
+4. Catchall log flood at INFO
+   Every SKSE poll lands in the catch-all route, so INFO doubled the visible request rate. Demoted `Catchall:` to DEBUG; `/vsx.php` remains WARN as the SKVA tripwire.
+
+#### Performance numbers observed (CPU, 9950X3D CCD1, `sk_malenord`)
+
+* Warm model load: ~315ms
+* Per-utterance synth (~80 chars): ~900ms
+* Two-agent turn TTS budget: ~2.1s end-to-end
+* Output WAV: ~200kB at 22050Hz / 16-bit / mono for ~9s of speech
+
+This fits comfortably inside the next-turn LLM generation window, so only the first audible response pays the full latency.
+
+#### SKVA Synth coexistence
+
+CHIM's SKVA Synth SKSE plugin is still loaded in this modlist. It POSTs to `/vsx.php` during session init with multipart audio (~250kB) keyed by `codename` (NPC) and `oname` (vanilla Bethesda voice file path, e.g. `Sound\Voice\Skyrim.esm\maleeventoned\dbrecurrin_dbrecurringcont_00087b80_1.fuz`).
+
+This is important: the `oname` query parameter is the missing piece for in-game audio delivery. SKSE plays whatever audio file exists at the path corresponding to `oname` when a dialogue line triggers — not files keyed by NPC name. Our current `{agent_id}_{md5[:8]}.wav` filenames in `soundcache/` are valid audio but invisible to SKSE because SKSE never looks for them.
+
+#### Open: SKSE-side delivery filename gap
+
+Two paths remain:
+
+* Path A — implement `/vsx.php` properly, keep SKVA Synth doing the synthesis. Falcon-owned TTS becomes redundant.
+* Path B — disable SKVA Synth, do TTS in Falcon, and write to the exact SKSE-expected `oname` path. This is the strategic direction if Falcon truly owns TTS, but it requires a small SKSE-side shim to tell Falcon which `oname` Skyrim is about to play.
+
+Decision pending. Path B aligns with “Falcon owns TTS” and the broader goal of replacing CHIM UI/control surfaces, but Path A is the fastest route to in-game audio if an immediate bridge is desired.
+
 ### ITT — Image-to-Text ("Soulgaze")
 
 CHIM's "Soulgaze" feature lets NPCs "see" the game world via screenshots analyzed by vision models. A screenshot is captured, sent to a vision LLM, and the description becomes part of the NPC's context.

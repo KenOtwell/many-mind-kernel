@@ -204,6 +204,19 @@ class EventAccumulator:
             # Update earshot bitvectors from _speech companion data
             self._update_earshot(event)
 
+            # Behavior adoption: canned NPC _speech is recorded into the
+            # speaker's dialogue history the same way LLM-generated output
+            # is, so on the next turn the agent sees "I said this" instead
+            # of having a silent gap where vanilla dialogue happened. Only
+            # fires when the speaker is an active NPC (player speech goes
+            # through record_player_input from inputtext events).
+            if event.event_type == "_speech" and event.parsed_data:
+                speaker = event.parsed_data.get("speaker", "")
+                if speaker and speaker not in _NON_AGENT_IDS and speaker in self._active_npc_ids:
+                    speech_text = (event.parsed_data.get("speech") or "").strip()
+                    if speech_text:
+                        self.record_npc_speech(speaker, speech_text)
+
             # Record fact for all significant events
             self._record_fact(event, present_ids)
 
@@ -263,6 +276,27 @@ class EventAccumulator:
         # Group timeline — everyone present heard this NPC speak
         self._group_memory.verbatim.append(
             {"role": agent_id, "content": utterance}
+        )
+
+    def record_npc_speech(self, agent_id: str, text: str) -> None:
+        """
+        Record canned NPC speech (from _speech events) into dialogue history.
+
+        Per the Behavior Adoption design (Living Doc §Event Accumulator):
+        externally-generated NPC dialogue — CHIM canned lines, RDO replies,
+        vanilla ambient — is adopted as the agent's own output. The agent
+        cannot distinguish "I said this" from "the game made me say this";
+        on the next turn it sees the line in its history and rationalises
+        continuity from there.
+
+        Same shape as record_agent_output: role=assistant in the speaker's
+        private history, role=<agent_id> in the group timeline. Text is
+        the clean speech field from SpeechData, not the JSON envelope.
+        """
+        buf = self._get_or_create_buffer(agent_id)
+        buf.dialogue_history.append({"role": "assistant", "content": text})
+        self._group_memory.verbatim.append(
+            {"role": agent_id, "content": text}
         )
 
     def record_player_input(self, text: str) -> None:
@@ -450,7 +484,16 @@ class EventAccumulator:
         if self._fact_pool is None:
             return
 
-        content = event.raw_data
+        # For _speech, prefer the parsed speech text — storing the raw
+        # JSON envelope (audios path, companions list, etc.) as a fact
+        # would pollute retrieval with non-utterance noise.
+        if event.event_type == "_speech" and event.parsed_data:
+            content = (event.parsed_data.get("speech") or "").strip()
+            if not content:
+                content = event.raw_data
+        else:
+            content = event.raw_data
+
         if not content:
             return
 
