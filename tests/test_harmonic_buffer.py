@@ -1,11 +1,11 @@
-"""Tests for progeny.src.harmonic_buffer."""
+"""Tests for mindcore.harmonic_buffer."""
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 from shared.constants import EMOTIONAL_DIM, ZERO_SEMAGRAM
-from progeny.src.harmonic_buffer import (
+from mindcore.harmonic_buffer import (
     DynamicModulators,
     EmotionalDelta,
     HarmonicBuffer,

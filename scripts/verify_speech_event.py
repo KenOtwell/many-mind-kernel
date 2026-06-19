@@ -200,7 +200,7 @@ def main() -> int:
 
     # Build a TurnContext-shaped object (we only need the bits process_inbound reads)
     from progeny.src.event_accumulator import AgentBuffer, TurnContext
-    from progeny.src.harmonic_buffer import HarmonicState
+    from mindcore.harmonic_buffer import HarmonicState
 
     # Just verify the branch the code takes \u2014 we don't need to actually run the
     # full embed (which requires model load). Mock by patching process_texts.

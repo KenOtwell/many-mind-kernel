@@ -1,4 +1,4 @@
-"""Tests for progeny.src.emotional_projection."""
+"""Tests for mindcore.emotional."""
 from __future__ import annotations
 
 import numpy as np
@@ -10,7 +10,7 @@ from shared.constants import EMOTIONAL_DIM, EMOTIONAL_AXES
 @pytest.fixture(autouse=True)
 def _reset_projection_state():
     """Reset the module-level bases so each test starts clean."""
-    import shared.emotional as mod
+    import mindcore.emotional as mod
     saved = mod._bases
     mod._bases = None
     yield
@@ -19,21 +19,21 @@ def _reset_projection_state():
 
 class TestLoadBases:
     def test_loads_from_default_path(self):
-        from progeny.src.emotional_projection import load_bases, is_loaded
+        from mindcore.emotional import load_bases, is_loaded
         load_bases()
         assert is_loaded()
 
     def test_bases_shape(self):
-        from progeny.src.emotional_projection import load_bases
-        import shared.emotional as mod
+        from mindcore.emotional import load_bases
+        import mindcore.emotional as mod
         load_bases()
         assert mod._bases is not None
         assert mod._bases.shape == (8, 384)
 
     def test_bases_orthonormal(self):
         """GS bases should be orthonormal — dot products ~0 off-diagonal."""
-        from progeny.src.emotional_projection import load_bases
-        import shared.emotional as mod
+        from mindcore.emotional import load_bases
+        import mindcore.emotional as mod
         load_bases()
         dot = mod._bases @ mod._bases.T
         # Diagonal should be ~1.0
@@ -45,7 +45,7 @@ class TestLoadBases:
 
 class TestProject:
     def test_output_length(self):
-        from progeny.src.emotional_projection import project, load_bases
+        from mindcore.emotional import project, load_bases
         load_bases()
         emb = np.random.randn(384).astype(np.float32)
         sem = project(emb)
@@ -53,7 +53,7 @@ class TestProject:
 
     def test_residual_nonnegative(self):
         """Residual magnitude (axis 8) should always be >= 0."""
-        from progeny.src.emotional_projection import project, load_bases
+        from mindcore.emotional import project, load_bases
         load_bases()
         for _ in range(10):
             emb = np.random.randn(384).astype(np.float32)
@@ -61,15 +61,15 @@ class TestProject:
             assert sem[8] >= 0.0
 
     def test_zero_vector_returns_zeros(self):
-        from progeny.src.emotional_projection import project, load_bases
+        from mindcore.emotional import project, load_bases
         load_bases()
         sem = project(np.zeros(384, dtype=np.float32))
         assert all(v == 0.0 for v in sem)
 
     def test_known_direction(self):
         """A vector aligned with the fear basis should project high on fear."""
-        from progeny.src.emotional_projection import load_bases, project
-        import shared.emotional as mod
+        from mindcore.emotional import load_bases, project
+        import mindcore.emotional as mod
         load_bases()
         # Use the fear basis vector itself as input
         fear_basis = mod._bases[0].copy()
@@ -86,7 +86,7 @@ class TestProject:
 class TestProjectBatch:
     def test_batch_matches_single(self):
         """Batch project should give same results as individual projects."""
-        from progeny.src.emotional_projection import project, project_batch, load_bases
+        from mindcore.emotional import project, project_batch, load_bases
         load_bases()
         embs = np.random.randn(5, 384).astype(np.float32)
         batch_result = project_batch(embs)
@@ -97,14 +97,14 @@ class TestProjectBatch:
             )
 
     def test_batch_shape(self):
-        from progeny.src.emotional_projection import project_batch, load_bases
+        from mindcore.emotional import project_batch, load_bases
         load_bases()
         embs = np.random.randn(10, 384).astype(np.float32)
         result = project_batch(embs)
         assert result.shape == (10, EMOTIONAL_DIM)
 
     def test_empty_batch(self):
-        from progeny.src.emotional_projection import project_batch, load_bases
+        from mindcore.emotional import project_batch, load_bases
         load_bases()
         result = project_batch(np.empty((0, 384), dtype=np.float32))
         assert result.shape == (0, EMOTIONAL_DIM)

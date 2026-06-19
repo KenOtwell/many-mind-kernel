@@ -233,7 +233,7 @@ class TestLLMHarmonics:
     @pytest.mark.asyncio
     async def test_updated_harmonics_shifts_agent_state(self):
         """LLM-proposed harmonics should shift the agent's emotional state."""
-        from progeny.src.harmonic_buffer import HarmonicState, configure, HarmonicConfig
+        from mindcore.harmonic_buffer import HarmonicState, configure, HarmonicConfig
 
         # Use a fresh harmonic state for this test
         routes._harmonic_state = HarmonicState()
@@ -269,7 +269,7 @@ class TestLLMHarmonics:
     @pytest.mark.asyncio
     async def test_no_harmonics_no_pass2(self):
         """Agent without updated_harmonics gets only mechanical pass."""
-        from progeny.src.harmonic_buffer import HarmonicState
+        from mindcore.harmonic_buffer import HarmonicState
         routes._harmonic_state = HarmonicState()
 
         mock_response = json.dumps({"responses": [{
@@ -296,7 +296,7 @@ class TestLLMHarmonics:
     @pytest.mark.asyncio
     async def test_blend_zero_disables_pass2(self):
         """blend=0.0 should completely ignore LLM harmonics."""
-        from progeny.src.harmonic_buffer import HarmonicState, configure, HarmonicConfig
+        from mindcore.harmonic_buffer import HarmonicState, configure, HarmonicConfig
 
         routes._harmonic_state = HarmonicState()
         configure(HarmonicConfig(llm_harmonics_blend=0.0))

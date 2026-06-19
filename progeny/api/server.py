@@ -12,8 +12,8 @@ from fastapi import FastAPI
 
 from progeny.api.routes import router
 from progeny.src import llm_client
-from progeny.src import embedding
-from progeny.src import emotional_projection
+from mindcore import embedding
+from mindcore import emotional as emotional_projection
 from progeny.src import qdrant_client
 from progeny.src.prompt_formatter import SYSTEM_PROMPT
 from shared.config import settings

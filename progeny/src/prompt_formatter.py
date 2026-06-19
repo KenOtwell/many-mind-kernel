@@ -36,7 +36,7 @@ from progeny.src.memory_retrieval import MemoryBundle
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from progeny.src.harmonic_buffer import EmotionalDelta, HarmonicState
+    from mindcore.harmonic_buffer import EmotionalDelta, HarmonicState
 
 logger = logging.getLogger(__name__)
 

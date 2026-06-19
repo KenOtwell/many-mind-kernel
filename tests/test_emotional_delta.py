@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from shared.constants import EMOTIONAL_DIM
-from progeny.src.harmonic_buffer import EmotionalDelta, HarmonicState
+from mindcore.harmonic_buffer import EmotionalDelta, HarmonicState
 from shared.schemas import AgentResponse
 
 
@@ -42,7 +42,7 @@ def fake_embed(monkeypatch):
 @pytest.fixture(autouse=True)
 def _load_projection_bases():
     """Ensure the 9d projection bases are loaded for every test in this file."""
-    from progeny.src.emotional_projection import load_bases
+    from mindcore.emotional import load_bases
     load_bases()
 
 

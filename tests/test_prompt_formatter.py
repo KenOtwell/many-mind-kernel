@@ -316,7 +316,7 @@ class TestCurvatureTruncation:
     def test_crisis_strips_to_anchors_only(self):
         """High urgency: only anchors + display + events survive."""
         from progeny.src.event_accumulator import TieredMemory
-        from progeny.src.harmonic_buffer import EmotionalDelta
+        from mindcore.harmonic_buffer import EmotionalDelta
 
         ctx = _make_context()
         ctx.group_memory = TieredMemory(
@@ -345,7 +345,7 @@ class TestCurvatureTruncation:
 
     def test_crisis_strips_agent_deep_memory(self):
         """High urgency: agent block drops dialogue_history and compressed."""
-        from progeny.src.harmonic_buffer import EmotionalDelta
+        from mindcore.harmonic_buffer import EmotionalDelta
 
         ctx = _make_context()
         ctx.agent_buffers["Lydia"].memory.verbatim = [
@@ -412,7 +412,7 @@ class TestTierScaling:
 
     def test_tier0_has_full_buffers(self):
         """Tier 0 agent gets full buffer traces (fast/medium/slow)."""
-        from progeny.src.harmonic_buffer import HarmonicState
+        from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
         state.update("Lydia", [0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3])
 
@@ -429,7 +429,7 @@ class TestTierScaling:
 
     def test_tier1_has_curvature_no_buffers(self):
         """Tier 1 agent gets base_vector + curvature, no buffer traces."""
-        from progeny.src.harmonic_buffer import HarmonicState
+        from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
         state.update("Belethor", [0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.3, 0.0, 0.2])
 
@@ -445,7 +445,7 @@ class TestTierScaling:
 
     def test_tier2_has_base_vector_only(self):
         """Tier 2 agent gets base_vector only."""
-        from progeny.src.harmonic_buffer import HarmonicState
+        from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
         state.update("Ysolda", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.1])
 
@@ -461,7 +461,7 @@ class TestTierScaling:
 
     def test_tier3_is_stub(self):
         """Tier 3 agent: minimal stub — just agent_id, tier, ticks, base_vector."""
-        from progeny.src.harmonic_buffer import HarmonicState
+        from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
         state.update("Heimskr", [0.0, 0.0, 0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.9])
 
@@ -535,7 +535,7 @@ class TestTierScaling:
 
     def test_mixed_tier_roster(self):
         """Mixed roster: each agent gets tier-appropriate block granularity."""
-        from progeny.src.harmonic_buffer import HarmonicState
+        from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
         for name in ["Lydia", "Belethor", "Ysolda", "Heimskr"]:
             state.update(name, [0.1] * 9)
@@ -563,7 +563,7 @@ class TestTierScaling:
 
     def test_tier1_emotional_dynamics_curvature_only(self):
         """Tier 1 gets curvature in emotional_dynamics, not snap/tension."""
-        from progeny.src.harmonic_buffer import EmotionalDelta
+        from mindcore.harmonic_buffer import EmotionalDelta
         ctx = _make_context(active_npc_ids=["Belethor"])
         roster = [ScheduledAgent(agent_id="Belethor", tier=1, ticks_since_last_action=2)]
         delta = EmotionalDelta(
@@ -605,7 +605,7 @@ class TestTierScaling:
 class TestGroupDisplay:
     def test_group_display_shows_fast_buffer(self):
         """NPCs with emotional state show their fast buffer in group display."""
-        from progeny.src.harmonic_buffer import HarmonicState
+        from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
         angry = [0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3]
         state.update("Lydia", angry)
@@ -623,7 +623,7 @@ class TestGroupDisplay:
 
     def test_zero_state_npcs_excluded_from_display(self):
         """NPCs with no emotional state yet don't appear in group display."""
-        from progeny.src.harmonic_buffer import HarmonicState
+        from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()  # No updates — all zero
 
         ctx = _make_context()

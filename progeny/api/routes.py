@@ -30,7 +30,7 @@ from shared.schemas import (
     TurnResponse,
 )
 from shared.constants import COLLECTION_NPC_MEMORIES
-from shared import qdrant_wrapper
+from mindcore import qdrant_wrapper
 from progeny.src.event_accumulator import EventAccumulator, TurnContext
 from progeny.src.agent_scheduler import AgentScheduler, DispatchGroup, NpcScheduleInfo
 from progeny.src.fact_pool import FactPool
@@ -40,14 +40,14 @@ from progeny.src.llm_client import GenerateResult, LLMError
 from progeny.src import response_expander
 from progeny.src.memory_compressor import slide_window
 from progeny.src import emotional_delta
-from progeny.src.harmonic_buffer import HarmonicState, build_modulators
+from mindcore.harmonic_buffer import HarmonicState, build_modulators
 from progeny.src.memory_writer import MemoryWriter
 from progeny.src.memory_retrieval import MemoryRetriever, MemoryBundle
 from progeny.src.compression import ArcCompressor, SceneCompressor, DEFAULT_SNAP_THRESHOLD
 from progeny.src import qdrant_client as progeny_qdrant
-from progeny.src.uncertainty import compute_certainty
-from shared import embedding as shared_embedding
-from shared import emotional as shared_emotional
+from mindcore.uncertainty import compute_certainty
+from mindcore import embedding as shared_embedding
+from mindcore import emotional as shared_emotional
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def _apply_llm_harmonics(
     (honest but dumb) and the LLM provides the contextual correction
     (smart but potentially confabulated). Neither alone is sufficient.
     """
-    from progeny.src.harmonic_buffer import _config as hb_config
+    from mindcore.harmonic_buffer import _config as hb_config
 
     base_blend = hb_config.llm_harmonics_blend
     if base_blend <= 0.0:

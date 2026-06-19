@@ -27,7 +27,7 @@ import pytest
 from falcon.src.event_parsers import parse_speech
 from progeny.src.event_accumulator import AgentBuffer, EventAccumulator, TurnContext
 from progeny.src.fact_pool import FactPool
-from progeny.src.harmonic_buffer import HarmonicState
+from mindcore.harmonic_buffer import HarmonicState
 from progeny.src import emotional_delta as ed_mod
 from shared.schemas import SpeechData, TickPackage, TypedEvent
 

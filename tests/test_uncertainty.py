@@ -1,11 +1,11 @@
-"""Tests for progeny.src.uncertainty — per-agent certainty from token logprobs."""
+"""Tests for mindcore.uncertainty — per-agent certainty from token logprobs."""
 from __future__ import annotations
 
 import math
 
 import pytest
 
-from progeny.src.uncertainty import (
+from mindcore.uncertainty import (
     compute_certainty,
     _segment_certainty,
     _segment_by_agent,

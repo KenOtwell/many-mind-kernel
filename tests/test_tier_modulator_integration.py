@@ -26,7 +26,7 @@ from shared.constants import EMOTIONAL_DIM
 from shared.schemas import TypedEvent
 from progeny.src.agent_scheduler import ScheduledAgent
 from progeny.src.event_accumulator import AgentBuffer, TurnContext
-from progeny.src.harmonic_buffer import (
+from mindcore.harmonic_buffer import (
     HarmonicState,
     build_modulators,
 )

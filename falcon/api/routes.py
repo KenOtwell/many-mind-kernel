@@ -31,7 +31,7 @@ from falcon.src import tts as tts_service
 from shared.schemas import TypedEvent, TickPackage, TurnResponse
 from shared.constants import COLLECTION_NPC_MEMORIES
 from shared.config import settings
-from shared import qdrant_wrapper
+from mindcore import qdrant_wrapper
 
 logger = logging.getLogger(__name__)
 

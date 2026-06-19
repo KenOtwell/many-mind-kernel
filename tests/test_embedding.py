@@ -1,4 +1,4 @@
-"""Tests for progeny.src.embedding.
+"""Tests for mindcore.embedding.
 
 These tests load the real all-MiniLM-L6-v2 model. First run downloads
 ~80MB to ~/.cache/huggingface/. Subsequent runs use the cached model.
@@ -14,7 +14,7 @@ from shared.config import settings
 @pytest.fixture(autouse=True)
 def _reset_embedding_state():
     """Reset the module-level model between tests."""
-    import shared.embedding as mod
+    import mindcore.embedding as mod
     saved = mod._model
     yield
     mod._model = saved
@@ -22,12 +22,12 @@ def _reset_embedding_state():
 
 class TestLoadModel:
     def test_loads_successfully(self):
-        from progeny.src.embedding import load_model, is_loaded
+        from mindcore.embedding import load_model, is_loaded
         load_model()
         assert is_loaded()
 
     def test_idempotent(self):
-        from progeny.src.embedding import load_model, is_loaded
+        from mindcore.embedding import load_model, is_loaded
         load_model()
         load_model()  # Should not raise
         assert is_loaded()
@@ -35,28 +35,28 @@ class TestLoadModel:
 
 class TestEmbed:
     def test_single_text_shape(self):
-        from progeny.src.embedding import embed_one, load_model
+        from mindcore.embedding import embed_one, load_model
         load_model()
         vec = embed_one("I am sworn to carry your burdens.")
         assert vec.shape == (settings.embedding.semantic_dim,)
         assert vec.dtype == np.float32
 
     def test_batch_shape(self):
-        from progeny.src.embedding import embed, load_model
+        from mindcore.embedding import embed, load_model
         load_model()
         texts = ["Hello", "World", "Skyrim"]
         vecs = embed(texts)
         assert vecs.shape == (3, settings.embedding.semantic_dim)
 
     def test_empty_batch(self):
-        from progeny.src.embedding import embed, load_model
+        from mindcore.embedding import embed, load_model
         load_model()
         vecs = embed([])
         assert vecs.shape == (0, settings.embedding.semantic_dim)
 
     def test_semantic_similarity(self):
         """Similar sentences should have higher cosine similarity than dissimilar ones."""
-        from progeny.src.embedding import embed, load_model
+        from mindcore.embedding import embed, load_model
         load_model()
         vecs = embed([
             "I will protect you with my life.",     # protective
@@ -73,7 +73,7 @@ class TestEmbed:
 
     def test_nonzero_output(self):
         """Embedding should not be all zeros."""
-        from progeny.src.embedding import embed_one, load_model
+        from mindcore.embedding import embed_one, load_model
         load_model()
         vec = embed_one("Test")
         assert np.linalg.norm(vec) > 0

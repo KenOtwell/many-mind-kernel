@@ -26,9 +26,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from progeny.src import embedding
-from progeny.src import emotional_projection
-from progeny.src.harmonic_buffer import EmotionalDelta, HarmonicState
+from mindcore import embedding
+from mindcore import emotional as emotional_projection
+from mindcore.harmonic_buffer import EmotionalDelta, HarmonicState
 
 if TYPE_CHECKING:
     from progeny.src.event_accumulator import TurnContext

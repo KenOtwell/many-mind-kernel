@@ -18,7 +18,7 @@ from falcon.api.routes import (
     _handle_turn_response,
 )
 from falcon.src import progeny_protocol
-from shared import embedding, emotional
+from mindcore import embedding, emotional
 from shared.config import settings
 
 logging.basicConfig(

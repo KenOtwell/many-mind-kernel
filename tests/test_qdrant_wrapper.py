@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from shared import qdrant_wrapper
+from mindcore import qdrant_wrapper
 from shared.constants import COLLECTION_NPC_MEMORIES, EMOTIONAL_DIM, SEMANTIC_DIM
 
 
@@ -29,7 +29,7 @@ def mock_client():
 @pytest.fixture(autouse=True)
 def _ensure_models_loaded():
     """Load real embedding model + emotional bases for the test session."""
-    from shared import embedding, emotional
+    from mindcore import embedding, emotional
     embedding.load_model()
     emotional.load_bases()
 

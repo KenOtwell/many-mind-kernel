@@ -5,27 +5,16 @@ Emotional axes, actor values, command vocabulary, collection names.
 """
 
 # ---------------------------------------------------------------------------
-# 9d Emotional Semagram
+# 9d Emotional Semagram — cognitive constants, now owned by mindcore.
+# Re-exported so existing `from shared.constants import ...` keeps working.
 # ---------------------------------------------------------------------------
-
-# Gram-Schmidt priority order — earlier axes preserved more faithfully
-EMOTIONAL_AXES: list[str] = [
-    "fear",        # dim 0 — drift 1.000
-    "anger",       # dim 1 — drift 0.985
-    "love",        # dim 2 — drift 0.986
-    "disgust",     # dim 3 — drift 0.846
-    "excitement",  # dim 4 — drift 0.941
-    "sadness",     # dim 5 — drift 0.900
-    "joy",         # dim 6 — drift 0.780
-    "safety",      # dim 7 — drift 0.803
-    "residual",    # dim 8 — orthogonal complement magnitude
-]
-
-EMOTIONAL_DIM: int = 9
-SEMANTIC_DIM: int = 384
-
-# Zero semagram — default emotional state
-ZERO_SEMAGRAM: list[float] = [0.0] * EMOTIONAL_DIM
+from mindcore.constants import (  # noqa: F401
+    EMOTIONAL_AXES,
+    EMOTIONAL_DIM,
+    SEMANTIC_DIM,
+    ZERO_SEMAGRAM,
+    MOOD_TO_AXIS,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -42,20 +31,7 @@ ACTOR_VALUE_RANGES: dict[str, tuple[int, int, str]] = {
 }
 
 
-# Mood enum → EMOTIONAL_AXES index mapping.
-# Skyrim Mood enum: 0=Neutral 1=Anger 2=Fear 3=Happy 4=Sad
-#                   5=Surprised 6=Puzzled 7=Disgusted
-# Maps to the axis that Mood biases toward (or None for Neutral/unmapped).
-MOOD_TO_AXIS: dict[int, int | None] = {
-    0: None,   # Neutral — no axis bias
-    1: 1,      # Anger → anger axis
-    2: 0,      # Fear → fear axis
-    3: 6,      # Happy → joy axis
-    4: 5,      # Sad → sadness axis
-    5: 4,      # Surprised → excitement axis
-    6: 8,      # Puzzled → residual axis (certainty-modulated reality signal)
-    7: 3,      # Disgusted → disgust axis
-}
+# MOOD_TO_AXIS (cognitive) is imported from mindcore.constants above.
 
 
 # ---------------------------------------------------------------------------

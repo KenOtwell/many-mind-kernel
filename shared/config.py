@@ -30,12 +30,9 @@ def _env_bool(key: str, default: bool) -> bool:
     return val.lower() in ("1", "true", "yes")
 
 
-@dataclass
-class QdrantConfig:
-    """Qdrant connection — both services connect to the Gaming PC instance."""
-    host: str = field(default_factory=lambda: _env("QDRANT_HOST", "127.0.0.1"))
-    rest_port: int = field(default_factory=lambda: _env_int("QDRANT_REST_PORT", 6333))
-    grpc_port: int = field(default_factory=lambda: _env_int("QDRANT_GRPC_PORT", 6334))
+# Qdrant + embedding config are cognitive/infra primitives — now owned by
+# mindcore and re-exported here so Neo's Settings and imports keep working.
+from mindcore.config import QdrantConfig, EmbeddingConfig  # noqa: F401,E402
 
 
 @dataclass
@@ -68,18 +65,7 @@ class ProgenyConfig:
         return f"ws://{self.host}:{self.port}/ws"
 
 
-@dataclass
-class EmbeddingConfig:
-    """Embedding model settings. Used by both Falcon and Progeny via shared modules."""
-    model_name: str = "all-MiniLM-L6-v2"
-    device: str = "cpu"
-    semantic_dim: int = 384
-    emotional_dim: int = 9
-    # CPU thread cap for PyTorch/numpy tensor ops during embedding.
-    # Prevents the embedding model from spiking all cores and competing
-    # with Skyrim (Gaming PC) or Ollama (Beelink). 2 threads is enough
-    # for small-batch embedding (1-10 texts) without starving neighbors.
-    cpu_threads: int = field(default_factory=lambda: _env_int("EMBED_CPU_THREADS", 2))
+# EmbeddingConfig is imported from mindcore.config above (cognitive/infra).
 
 
 @dataclass
