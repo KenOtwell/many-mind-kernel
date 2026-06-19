@@ -742,6 +742,8 @@ async def ws_channel(websocket: WebSocket) -> None:
 
         Runs as a fire-and-forget task so the WebSocket receive loop
         stays responsive to pings during long LLM generation.
+        If Falcon disconnects while a task is in flight, the send
+        raises RuntimeError — silently dropped since the client is gone.
         """
         try:
             result = await ingest(pkg)
@@ -756,6 +758,14 @@ async def ws_channel(websocket: WebSocket) -> None:
                     "type": "ack",
                     "data": result.model_dump(mode="json"),
                 }))
+        except RuntimeError as exc:
+            # WebSocket closed while this task was in flight — Falcon
+            # disconnected during LLM generation. Response is lost but
+            # Falcon will reconnect and the next turn starts fresh.
+            if "websocket.close" in str(exc) or "already completed" in str(exc):
+                logger.debug("WS: send dropped (socket closed) for tick %s", pkg.tick_id)
+            else:
+                logger.exception("WS: error processing tick %s", pkg.tick_id)
         except Exception:
             logger.exception("WS: error processing tick %s", pkg.tick_id)
 
