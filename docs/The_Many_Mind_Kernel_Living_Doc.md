@@ -2449,6 +2449,31 @@ stt_endpoint: str = "http://127.0.0.1:9876"  # Service URL
 
 Per-NPC voice overrides stored in NPC profile data (Qdrant `skyrim_agent_state` or config).
 
+## Social Bootstrapping (Phase 6)
+*Documented 2026-06-24. Lineage: Ken Otwell (acquaintance-as-justified-belief, reciprocal hearsay, valence-conditioned approach), Oz (implementation, hysteresis + dissonance wiring).*
+
+NPCs start as strangers and become acquaintances the way people do: they notice an unfamiliar face, feel wary or curious depending on who the stranger resembles, may introduce themselves, and thereafter remember each other. None of it is scripted — an introduction is a *trigger*, not a routine. Everything reaches the prompt only as affect (harmonic nudges) and recalled content; the engine-facing dials (Assistance/Confidence/Aggression) emerge from the felt state, never an injected instruction. The whole arc is built on the goal-resonance machinery (priming-as-affect-plus-recall, the defeasible candidate→committed→satisfied lifecycle, dissonance) rather than a parallel system.
+
+### Identity kernel (6a)
+On first sight, the NPC's seed profile (`skyrim_npc_profiles`) is parsed into an `IdentityKernel` cached per agent (sibling to the harmonic/fact/goal singletons), partitioned into **public** (name, occupation, origin, demeanor — the disclosure surface) and **private** (true desires, secrets) halves. The agent's own Tier-0/1 block carries its self-concept; the public half is what may propagate to others in 6e. Occupation/tags are also the *class signal* that sharpens the 6c percept query.
+
+### Acquaintance as justified belief (6b)
+"A knows B" = A holds at least one provenance-bearing belief about B (firsthand, hearsay, or reputation-lore) — a retrieval/fact check, not a flag. Strangerness is its negation: on presence-change an existing agent regards a newcomer as a stranger when recognition retrieval surfaced nothing AND no belief/reputation exists. Asymmetric by construction (a commoner "knows of" Ulfric; Ulfric knows nothing of the commoner). A process-lifetime stranger ledger carries this signal forward to 6c/6d.
+
+### Valence-conditioned approach (6c)
+One percept-cued retrieval (not a separate class probe): the perceived person on the semantic axis (sharpened by occupation/tags) plus the agent's affect on the emotional axis (emotion-first). Bad history with *soldiers* generalizes to a brand-new soldier with zero shared history — no taxonomy, just semantic+emotional resonance. A warmth-vs-wariness **valence** is read from the recalled memories' emotional keys using the documented split (positive = love+excitement+joy+safety, negative = fear+anger+disgust+sadness). Specific memories of *this* individual override the class prior as a **blend with hysteresis** (referent precedence): one kind encounter does not erase a wary prior; the individual emerges from the class shadow as evidence accumulates. Warmth promotes the get-acquainted nudge; wariness suppresses it (the NPC "doesn't dare ask the soldier a question"); the Confidence modulator damps the wary fear-component per personality, for free.
+
+### The get-acquainted goal + prior-vs-individual dissonance (6d)
+A seed social goal on the Phase 1-2 lifecycle: a co-present stranger raises it (valence-gated — warmth promotes, wariness suppresses below candidacy), sustained co-presence commits it, and it is satisfied once no co-present strangers remain. When the class prior and the individual's own memories disagree, that gap is fed into the dissonance term as an explicit salience signal — an expectation-violating person becomes the most cognitively interesting one in the room.
+
+### Reciprocal disclosure → hearsay propagation (6e)
+When an NPC speaks to someone it has not met, the exchange closes the loop — **and it leaves a memory in both minds**. The listener gains a provenance-bearing **hearsay memory** about the speaker ("X introduced themselves — a blacksmith from Riften"; referent = X; how-it-was-learned recorded). The speaker gains a complementary **telling memory** ("I introduced myself to Y; now Y knows who I am"; referent = Y). That second memory is the meta-belief that lets an NPC answer *"How do you know Y knows that? — I told them yesterday,"* and it is why **both** parties recognize each other on the next meeting, not just the listener. A thin symbolic identity fact (known by both) makes `are_acquainted` true; the stranger flag clears both ways; the get-acquainted goal goes satisfied. Deterministic IDs — hearsay on (subject, claim, source), telling on (speaker, listener, claim) — make retellings reinforce rather than duplicate. On the next encounter, recognition retrieval re-pages each party's memories of the other, `are_acquainted` is true in both directions, and the introduction no longer resonates.
+
+### Deferred
+6f (affect annealing: class-priors strengthen/decay, individual overrides consolidate) layers on the goal-resonance Phase 4/5 habit-annealing and sleep-consolidation machinery, so it lands after those. 6g is cross-arc integration tests + telemetry.
+
+Implementation: `identity_kernel.py`, `acquaintance.py`, `valence.py`, `social_goals.py`, `disclosure.py`, wired in `routes.py`; server-side telemetry logs stranger detection, valence conditioning, goal transitions, and propagation. Nothing in this arc is injected into the prompt as instruction.
+
 ## Open Design Questions
 
 * **Threshold tuning** — What delta magnitude = "significant" emotional shift? Likely needs per-agent calibration based on harmonic buffer decay rates.

@@ -70,15 +70,20 @@ class MemoryWriter:
         location: Optional[str] = None,
         privacy_level: str = PrivacyLevel.COLLECTIVE.value,
         extra_payload: Optional[dict[str, Any]] = None,
+        point_id: Optional[str] = None,
     ) -> str:
         """
         Write a RAW event point. Called for every event that enters
         the emotional delta pipeline — both inbound game events AND
         outbound LLM response text (bidirectional).
 
+        A deterministic point_id may be supplied (e.g. provenance-keyed
+        hearsay/disclosure memories in 6e) so retellings upsert the same
+        point rather than duplicating; defaults to a fresh uuid4.
+
         Returns the point ID.
         """
-        point_id = str(uuid4())
+        point_id = point_id or str(uuid4())
         payload: dict[str, Any] = {
             "agent_id": agent_id,
             "tier": CompressionTier.RAW.value,

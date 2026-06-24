@@ -51,6 +51,7 @@ from progeny.src import identity_kernel
 from progeny.src import acquaintance
 from progeny.src import valence
 from progeny.src import social_goals
+from progeny.src import disclosure
 from progeny.src.goal_pool import GoalPool, GoalState, seed_goals
 from progeny.src.goal_lifecycle import LifecycleStore
 from shared import embedding as shared_embedding
@@ -598,6 +599,77 @@ async def _condition_approach_by_valence(
 
 
 # ---------------------------------------------------------------------------
+# Disclosure -> hearsay propagation (Phase 6e)
+# ---------------------------------------------------------------------------
+
+async def _propagate_disclosures(
+    responses: list[AgentResponse],
+    all_active_npc_ids: list[str],
+) -> None:
+    """Reciprocal disclosure -> hearsay propagation (Phase 6e).
+
+    For each NPC that spoke this turn, treat its utterance to a not-yet-met
+    co-present NPC as an introduction: write the listener a hearsay memory and
+    the speaker a reciprocal telling memory (so both remember the exchange),
+    record a symbolic identity fact, and clear the stranger flag both ways.
+    Gated on the stranger ledger so it fires once per pair and is idempotent if
+    it re-fires. Server-side only; nothing is injected into the prompt.
+    """
+    if not shared_embedding.is_loaded() or not shared_emotional.is_loaded():
+        return
+    spoke = {r.agent_id for r in responses if r.utterance}
+    if not spoke:
+        return
+    others = [npc for npc in all_active_npc_ids if npc not in ("Player", "")]
+
+    count = 0
+    for speaker in spoke:
+        kernel = identity_kernel.get(speaker)
+        if kernel is None:
+            continue
+        listeners = [
+            listener for listener in others
+            if listener != speaker
+            and (
+                acquaintance.is_known_stranger(speaker, listener)
+                or acquaintance.is_known_stranger(listener, speaker)
+            )
+        ]
+        if not listeners:
+            continue
+        descriptor = disclosure.identity_descriptor(kernel)
+        try:
+            id_vec = shared_embedding.embed_one(
+                disclosure.fact_content(speaker, descriptor)
+            ).tolist()
+        except Exception:
+            logger.debug("Disclosure embedding failed for %s", speaker, exc_info=True)
+            continue
+        speaker_reaction = _harmonic_state.get_deviation(speaker)
+        for listener in listeners:
+            try:
+                if await disclosure.propagate_introduction(
+                    writer=_memory_writer,
+                    fact_pool=_fact_pool,
+                    speaker=speaker,
+                    listener=listener,
+                    speaker_kernel=kernel,
+                    identity_semantic_vec=id_vec,
+                    listener_reaction=_harmonic_state.get_deviation(listener),
+                    speaker_reaction=speaker_reaction,
+                    game_ts=time.time(),
+                ):
+                    count += 1
+            except Exception as exc:
+                logger.debug(
+                    "Disclosure propagation failed %s -> %s: %s", speaker, listener, exc,
+                )
+
+    if count:
+        logger.info("Disclosure propagation: %d introduction(s) propagated", count)
+
+
+# ---------------------------------------------------------------------------
 # Dynamic modulator application on NPC registration
 # ---------------------------------------------------------------------------
 
@@ -1063,6 +1135,11 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
                         resp.agent_id,
                         buf.active_task or "(cleared)",
                     )
+
+    # Phase 6e: propagate introductions — an NPC speaking to someone it has not
+    # met reciprocally de-strangers them (hearsay + telling memories + a
+    # symbolic identity fact), closing the acquaintance loop for both parties.
+    await _propagate_disclosures(all_responses, turn_context.active_npc_ids)
 
     # Emotional adoption: agent's own words shift its state (bidirectional pipeline)
     outbound_deltas = emotional_delta.process_outbound(all_responses, _harmonic_state)
