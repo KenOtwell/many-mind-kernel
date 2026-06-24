@@ -451,8 +451,9 @@ def peek_prior(observer: str, subject: str) -> tuple[float, int]:
 
 
 def reset() -> None:
-    """Drop all consolidated individual priors (e.g. on session wipe)."""
+    """Drop all consolidated individual priors and social snapshots (session wipe)."""
     _ledger.clear()
+    _snapshots.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -521,3 +522,35 @@ def approachability(traits: list[str] | None, tone: str = "") -> float:
         elif tok in WARY_TRAIT_HINTS:
             score -= APPROACHABILITY_STEP
     return max(APPROACHABILITY_MIN, min(APPROACHABILITY_MAX, score))
+
+
+# ---------------------------------------------------------------------------
+# 6d support: social valence snapshot
+#
+# The latest effective valence (after the hysteretic blend) and the prior-vs-
+# individual affect gap toward each subject, cached by the 6c conditioning pass
+# and read by social_goals for the get-acquainted goal's activation gating and
+# the dissonance affect-gap term. Process-lifetime; cleared on reset().
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SocialSnapshot:
+    """Latest valence summary toward a subject, for downstream social goals."""
+    effective: float = 0.0
+    affect_gap: float = 0.0
+
+
+_snapshots: dict[tuple[str, str], SocialSnapshot] = {}
+
+
+def record_social(
+    observer: str, subject: str, effective: float, affect_gap: float = 0.0,
+) -> None:
+    """Cache the effective valence + prior-vs-individual gap toward a subject."""
+    _snapshots[_ledger_key(observer, subject)] = SocialSnapshot(effective, affect_gap)
+
+
+def social_toward(observer: str, subject: str) -> SocialSnapshot | None:
+    """Return the latest social snapshot toward a subject, or None."""
+    return _snapshots.get(_ledger_key(observer, subject))

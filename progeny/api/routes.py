@@ -50,7 +50,8 @@ from progeny.src import goal_lifecycle
 from progeny.src import identity_kernel
 from progeny.src import acquaintance
 from progeny.src import valence
-from progeny.src.goal_pool import GoalPool, seed_goals
+from progeny.src import social_goals
+from progeny.src.goal_pool import GoalPool, GoalState, seed_goals
 from progeny.src.goal_lifecycle import LifecycleStore
 from shared import embedding as shared_embedding
 from shared import emotional as shared_emotional
@@ -140,9 +141,10 @@ async def initialize_goals() -> None:
     """
     try:
         count = await seed_goals(_goal_pool)
+        social = await social_goals.seed_social_goals(_goal_pool)
         logger.info(
-            "Goal pool initialized: %d goals (%d persisted to Qdrant)",
-            len(_goal_pool), count,
+            "Goal pool initialized: %d goals (%d + %d social persisted to Qdrant)",
+            len(_goal_pool), count, social,
         )
     except Exception:
         logger.exception("Goal seeding failed — continuing without goals")
@@ -194,6 +196,16 @@ async def _prime_goals_for_turn(
         return {}
 
     view = goal_lifecycle.PerceptView.from_turn_context(turn_context)
+
+    # 6d: surface each agent's co-present strangers so the get-acquainted goal's
+    # acquainted() predicate and social activation can be evaluated this tick.
+    present = set(turn_context.active_npc_ids)
+    for aid in turn_context.active_npc_ids:
+        strangers = social_goals.present_strangers(aid, present)
+        if strangers:
+            view.strangers[aid] = strangers
+    social_id = social_goals.social_goal_id()
+
     results: dict[str, goal_priming.GoalPrimingResult] = {}
     for agent_id in turn_context.active_npc_ids:
         owned = _goal_pool.by_owner(agent_id)
@@ -215,17 +227,31 @@ async def _prime_goals_for_turn(
         # Defeasible lifecycle: recompute predicates and transition per-agent
         # goal state (candidate/committed/satisfied/reverted) for this tick.
         activations = {a.goal_id: a.activation for a in res.activations}
+
+        # 6d: the get-acquainted goal is driven by the social state, not by
+        # semantic resonance alone — inject its activation from co-present
+        # strangers, gated by valence (warmth promotes, wariness suppresses).
+        agent_strangers = view.strangers.get(agent_id, set())
+        if agent_strangers:
+            social_act = social_goals.social_activation(agent_id, agent_strangers)
+            activations[social_id] = max(activations.get(social_id, 0.0), social_act)
+
         transitions = goal_lifecycle.update_lifecycle(
             agent_id, owned, _lifecycle, activations, view,
         )
 
-        # Dissonance from unmet enablers + emotional volatility + uncertainty.
+        # Prior-vs-individual affect gap toward any co-present person — an
+        # expectation violation is a salience signal fed into dissonance (6d).
+        gap = social_goals.affect_gap(agent_id, present)
+
+        # Dissonance: unmet enablers + volatility + uncertainty + affect gap.
         dissonance = goal_lifecycle.compute_dissonance(
             agent_id, owned, _lifecycle, view,
             curvature=(delta.curvature if delta is not None else 0.0),
             snap=(delta.snap if delta is not None else 0.0),
             coherence=(delta.coherence if delta is not None else 1.0),
             certainty=_harmonic_state.get_certainty(agent_id),
+            affect_gap=gap,
         )
 
         # Transient curiosity spike from the leading resonance this tick.
@@ -240,6 +266,17 @@ async def _prime_goals_for_turn(
             pull_mag = base * (1.0 + dissonance)
             pull = [v * pull_mag for v in goal_priming.curiosity_direction()]
             _harmonic_state.apply_nudge(agent_id, pull)
+
+        # 6d: surface the get-acquainted goal as recalled content while it is
+        # active (candidate/committed) — affect + recall, never an imperative.
+        social_node = _goal_pool.get(social_id)
+        if (
+            social_node is not None
+            and _lifecycle.state_of(agent_id, social_node)
+            in (GoalState.CANDIDATE, GoalState.COMMITTED)
+            and social_node.statement not in res.recall
+        ):
+            res.recall.append(social_node.statement)
 
         if res.top is not None or transitions:
             logger.info(
@@ -506,6 +543,14 @@ async def _condition_approach_by_valence(
                 continue
 
             blended = valence.blend_valence(reading)
+            # 6d: cache the effective valence + prior-vs-individual gap so the
+            # get-acquainted goal can gate its activation and feed dissonance.
+            gap = (
+                abs(reading.general - reading.individual)
+                if (reading.general_support and reading.individual_support)
+                else 0.0
+            )
+            valence.record_social(observer, subject, blended.effective, gap)
             support = reading.general_support + reading.individual_support
             support_factor = (
                 min(support, VALENCE_SUPPORT_CAP) / VALENCE_SUPPORT_CAP

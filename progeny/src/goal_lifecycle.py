@@ -47,6 +47,10 @@ SWITCH_MARGIN = 0.10         # a challenger must beat the incumbent by this to w
 W_ENABLER = 0.5
 W_VOLATILITY = 0.3
 W_UNCERTAINTY = 0.2
+# Prior-vs-individual affect gap (6d): an explicit, additive salience bonus on
+# top of the base terms (default affect_gap=0.0 keeps prior behaviour). The
+# final score is clamped into [0, 1].
+W_AFFECT_GAP = 0.3
 
 # Heuristic weapon vocabulary for has_equipped(category='weapon').
 _WEAPON_KEYWORDS = (
@@ -74,6 +78,10 @@ class PerceptView:
     percept_text: str = ""
     equipment: dict[str, set[str]] = field(default_factory=dict)
     inventory: dict[str, set[str]] = field(default_factory=dict)
+    # 6d: per-agent set of co-present NPCs the agent regards as strangers.
+    # Populated by the caller from the acquaintance ledger; absent -> no
+    # stranger, so acquainted() is true (conservative, like the other signals).
+    strangers: dict[str, set[str]] = field(default_factory=dict)
 
     @classmethod
     def from_turn_context(cls, turn_context: "TurnContext") -> "PerceptView":
@@ -101,6 +109,10 @@ class PerceptView:
     def perceives(self, token: str) -> bool:
         token = token.strip().strip("'\"").lower()
         return bool(token) and token in self.percept_text
+
+    def has_stranger(self, agent_id: str) -> bool:
+        """True if the agent has any co-present stranger this tick (6d)."""
+        return bool(self.strangers.get(agent_id))
 
     def has_equipped(self, agent_id: str, category: str) -> bool:
         items = self.equipment.get(agent_id, set())
@@ -159,6 +171,11 @@ def evaluate_predicate(predicate: str, view: PerceptView, agent_id: str) -> bool
         return view.inventory_has(
             agent_id, item=kwargs.get("item"), category=kwargs.get("category"),
         )
+    if func == "has_stranger":
+        return view.has_stranger(agent_id)
+    if func == "acquainted":
+        # 6d: acquainted with everyone present = no co-present stranger.
+        return not view.has_stranger(agent_id)
     return False
 
 
@@ -341,13 +358,15 @@ def compute_dissonance(
     snap: float = 0.0,
     coherence: float = 1.0,
     certainty: float = 1.0,
+    affect_gap: float = 0.0,
 ) -> float:
     """Agent-level tension in [0, 1].
 
     Combines unmet-enabler weight (active enablers whose predicate is false),
-    emotional volatility (curvature, |snap|, 1-coherence), and uncertainty
-    (1-certainty). Phase 2 uses this to amplify the standing pull; Phase 3 will
-    gate decomposition on it.
+    emotional volatility (curvature, |snap|, 1-coherence), uncertainty
+    (1-certainty), and the prior-vs-individual affect gap (6d) — an expectation
+    violation toward a co-present person is itself a salience signal. Phase 2
+    uses this to amplify the standing pull; Phase 3 will gate decomposition.
     """
     enablers = [
         n for n in owned
@@ -367,10 +386,12 @@ def compute_dissonance(
         min(1.0, abs(curvature)) + min(1.0, abs(snap)) + (1.0 - max(0.0, min(1.0, coherence)))
     ) / 3.0
     uncertainty = 1.0 - max(0.0, min(1.0, certainty))
+    gap = max(0.0, min(1.0, affect_gap))
 
     score = (
         W_ENABLER * unmet_frac
         + W_VOLATILITY * volatility
         + W_UNCERTAINTY * uncertainty
+        + W_AFFECT_GAP * gap
     )
     return max(0.0, min(1.0, score))
