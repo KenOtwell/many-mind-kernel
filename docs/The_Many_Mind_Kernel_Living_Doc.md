@@ -844,6 +844,16 @@ bases = {k: data[k] for k in data['_emotion_names'][:8]}  # 8 unit vectors, each
 * **Raw points** — Every event, always stored, never deleted, never modified. Immutable log. Source of truth.
 * **Arc summaries** — Condensed descriptions of emotional arcs. Stored as MOD-tier index entries. Used ONLY as search aids to find relevant raw points. Like a library card catalog — you search the catalog to find the book, then read the book (raw data).
 
+### In-Context Recency Tiers vs. Durable Vector Tiers
+*Documented 2026-06-24. Lineage: Ken Otwell (two-ladder clarification, full-content keyword retention), Oz (implementation).*
+
+Two distinct "tier" ladders are easy to conflate:
+
+* **In-context recency window** (`TieredMemory` on each `AgentBuffer`, `memory_compressor.py`): `verbatim` (full text, ~8) → `compressed` (extractive one-liners, ~10) → `keywords` (pipe-delimited text *tags*, ~10) → evict. Text only, **no vectors**, recency-ordered (oldest-out), persists across turns, and is re-rendered into the Layer-2 block every turn (Tier 0 sees all three sub-tiers; Tier 1 the last few verbatim; Tier 2/3 drop it). This is the cheap, always-on continuity thread — no Qdrant round-trip, no one-tick delay.
+* **Durable associative store** (Qdrant `skyrim_npc_memories`): `RAW` → `MOD` (arc summaries) → `MAX` (essences), each `{semantic 384d, emotional 9d}`. Vector-bearing, salience-gated (snap-triggered arcs; `age − salience` compaction), retrieved on cue. Full text is written here at ingestion, independently of the in-context ladder — so a memory can be a degraded one-liner in working context yet still fully recoverable from Qdrant.
+
+The keyword tier distills from the one-liner, not the original, so it cannot recover anything the one-liner already dropped. The lossy step is `verbatim → compressed` (first sentence + ~80-char truncation). To stop salient cross-sentence tokens from being lost before the keyword tier ever sees them, `compress_entry` runs the keyword interpretation (`_extract_tags`) over the **full original content** and appends the salient entities/emotions/actions not already present in the first-sentence line. So "Meet me in Whiterun" in a second sentence survives into tier 2 (and thence tier 3) instead of vanishing at truncation. Single-sentence entries yield an empty residual, so the one-liner is unchanged.
+
 ### Storage Trigger
 
 ```
