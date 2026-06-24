@@ -28,7 +28,7 @@ from shared.schemas import (
     TickPackage,
     TurnResponse,
 )
-from shared.constants import COLLECTION_NPC_MEMORIES
+from shared.constants import COLLECTION_NPC_MEMORIES, EMOTIONAL_DIM
 from shared import qdrant_wrapper
 from progeny.src.event_accumulator import EventAccumulator, TurnContext
 from progeny.src.agent_scheduler import AgentScheduler, DispatchGroup, NpcScheduleInfo
@@ -49,6 +49,7 @@ from progeny.src import goal_priming
 from progeny.src import goal_lifecycle
 from progeny.src import identity_kernel
 from progeny.src import acquaintance
+from progeny.src import valence
 from progeny.src.goal_pool import GoalPool, seed_goals
 from progeny.src.goal_lifecycle import LifecycleStore
 from shared import embedding as shared_embedding
@@ -423,6 +424,135 @@ async def _fire_recognition_retrieval(
 
 
 # ---------------------------------------------------------------------------
+# Valence-conditioned approach (Phase 6c)
+# ---------------------------------------------------------------------------
+
+# Approach-nudge tunables — a lean, not a shove (cf. goal_priming gains).
+VALENCE_NUDGE_GAIN = 0.3       # base magnitude, scaled by |valence|·confidence·support
+VALENCE_SUPPORT_CAP = 4        # supporting memories at which the support factor saturates
+STRANGER_CURIOSITY = 0.1       # mild novelty curiosity toward a neutral unknown person
+_VALENCE_EPS = 1e-6
+
+
+def _wariness_direction() -> list[float]:
+    """Guarded affect direction: raise fear, lower safety.
+
+    The fear component is damped per-agent by the Confidence modulator, so a
+    Brave/Foolhardy NPC barely registers it while a Cowardly one feels it
+    sharply — personality shaping for free, no keyword controller.
+    """
+    d = [0.0] * EMOTIONAL_DIM
+    d[0] = 1.0     # fear up
+    d[7] = -1.0    # safety down
+    return d
+
+
+async def _condition_approach_by_valence(
+    entered_npc_ids: list[str],
+    all_active_npc_ids: list[str],
+) -> None:
+    """Condition each existing agent's approach disposition toward each
+    newcomer by valence (Phase 6c).
+
+    One percept-cued retrieval per (observer, newcomer): the perceived person
+    (sharpened by occupation/tags) on the semantic axis, the observer's affect
+    on the emotional axis. Specific memories of the newcomer override the class
+    prior as a blend with hysteresis. Warmth promotes the get-acquainted
+    resonance (a curiosity nudge); wariness suppresses it (a guarded nudge); a
+    neutral disposition toward a known stranger yields mild novelty curiosity.
+    Expressed ONLY as an affect nudge plus class-congruent recall (queued
+    one-tick-delayed, anti-recursion) — never an imperative; the
+    Assistance/Confidence/Aggression dials emerge from the felt state.
+    """
+    global _reminding_queue
+
+    if not shared_embedding.is_loaded() or not shared_emotional.is_loaded():
+        return
+
+    entered_set = set(entered_npc_ids)
+    existing_agents = [npc for npc in all_active_npc_ids if npc not in entered_set]
+    if not existing_agents:
+        return
+
+    warm_count = 0
+    wary_count = 0
+    for observer in existing_agents:
+        emo_query = _harmonic_state.get_deviation(observer)
+        obs_kernel = identity_kernel.get(observer)
+        traits = None
+        tone = ""
+        if obs_kernel is not None:
+            raw_traits = obs_kernel.public.get("corePersonalityTraits")
+            traits = raw_traits if isinstance(raw_traits, list) else None
+            tone = obs_kernel.tone()
+        approach_gain = valence.approachability(traits, tone)
+
+        for subject in entered_npc_ids:
+            subj_kernel = identity_kernel.get(subject)
+            class_signal = subj_kernel.class_signal() if subj_kernel is not None else ""
+            percept = valence.build_percept_text(subject, class_signal)
+            if not percept:
+                continue
+            try:
+                semantic_query = shared_embedding.embed_one(percept).tolist()
+                reading = await valence.percept_cued_valence(
+                    observer, subject, semantic_query, emo_query,
+                )
+            except Exception as exc:
+                logger.debug(
+                    "Valence conditioning failed for %s re: %s: %s",
+                    observer, subject, exc,
+                )
+                continue
+
+            blended = valence.blend_valence(reading)
+            support = reading.general_support + reading.individual_support
+            support_factor = (
+                min(support, VALENCE_SUPPORT_CAP) / VALENCE_SUPPORT_CAP
+                if support else 0.0
+            )
+            evidence_mag = (
+                VALENCE_NUDGE_GAIN * abs(blended.effective)
+                * reading.confidence * support_factor
+            )
+
+            if blended.effective > _VALENCE_EPS and evidence_mag > 0.0:
+                gain = evidence_mag * approach_gain
+                nudge = [v * gain for v in goal_priming.curiosity_direction()]
+                warm_count += 1
+            elif blended.effective < -_VALENCE_EPS and evidence_mag > 0.0:
+                gain = evidence_mag / max(approach_gain, 0.1)
+                nudge = [v * gain for v in _wariness_direction()]
+                wary_count += 1
+            elif acquaintance.is_known_stranger(observer, subject):
+                # Neutral disposition toward an unknown person: mild novelty
+                # curiosity. The get-acquainted goal (6d) builds on this.
+                gain = VALENCE_NUDGE_GAIN * STRANGER_CURIOSITY * approach_gain
+                nudge = [v * gain for v in goal_priming.curiosity_direction()]
+                warm_count += 1
+            else:
+                continue
+
+            _harmonic_state.apply_nudge(observer, nudge)
+
+            # Surface class-congruent recall as ordinary recalled content for
+            # the NEXT tick (one-tick delay, like recognition).
+            if reading.recall:
+                bundle = _reminding_queue.get(observer)
+                if bundle is None:
+                    bundle = MemoryBundle(agent_id=observer)
+                    _reminding_queue[observer] = bundle
+                for text in reading.recall:
+                    bundle.summaries.append({"text": text, "tier": "SOCIAL"})
+
+    if warm_count or wary_count:
+        logger.info(
+            "Valence approach conditioning: %d warm, %d wary nudge(s) across %d newcomers",
+            warm_count, wary_count, len(entered_npc_ids),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Dynamic modulator application on NPC registration
 # ---------------------------------------------------------------------------
 
@@ -674,6 +804,12 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     # Results go to _reminding_queue (one-tick delay) — private, Layer 2.
     if turn_context.presence_changes.entered:
         await _fire_recognition_retrieval(
+            turn_context.presence_changes.entered,
+            turn_context.active_npc_ids,
+        )
+        # Phase 6c: valence-condition each existing agent's approach toward the
+        # newcomers (warmth promotes, wariness suppresses) via affect + recall.
+        await _condition_approach_by_valence(
             turn_context.presence_changes.entered,
             turn_context.active_npc_ids,
         )

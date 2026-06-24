@@ -74,8 +74,10 @@ class IdentityKernel:
     def class_signal(self) -> str:
         """Short text signature of the NPC's kind (occupation + tags).
 
-        Used by the 6c class probe so a percept query can resonate with
-        memories about *others of that kind* before any shared history.
+        Used in 6c to SHARPEN the single percept-cued retrieval query (not a
+        separate class probe): folding occupation/tags into the query text
+        lets feature-similar memories about *others of that kind* resonate
+        before any shared history. See progeny/src/valence.py.
         """
         parts: list[str] = []
         occ = self.occupation()
@@ -83,6 +85,13 @@ class IdentityKernel:
             parts.append(occ)
         parts.extend(t for t in self.tags if t)
         return ", ".join(parts)
+
+    def tone(self) -> str:
+        """Public communication tone (from communicationStyle), or ''.
+
+        Used by the 6c approach conditioning to shape approachability.
+        """
+        return self._tone()
 
     def _tone(self) -> str:
         style = self.public.get("communicationStyle")
