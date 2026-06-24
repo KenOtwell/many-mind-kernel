@@ -30,7 +30,7 @@ from typing import Any
 
 from shared.constants import EMOTIONAL_AXES, ZERO_SEMAGRAM
 from progeny.src.agent_scheduler import ScheduledAgent
-from progeny.src.event_accumulator import AgentBuffer, TieredMemory, TurnContext
+from progeny.src.event_accumulator import TieredMemory, TurnContext
 from progeny.src.fact_pool import FactPool
 from progeny.src.memory_retrieval import MemoryBundle
 
@@ -179,6 +179,7 @@ def build_prompt(
     fact_pool: FactPool | None = None,
     memory_bundles: dict[str, MemoryBundle] | None = None,
     speech_earshot: dict | None = None,
+    identities: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """
     Build the 2-message chat completion array for a dispatch group.
@@ -201,7 +202,7 @@ def build_prompt(
     # Message 2: data payload + instruction — rebuilt fresh every turn
     data_payload = _build_data_payload(
         turn_context, roster, all_active_npc_ids, harmonic_state, emotional_deltas,
-        fact_pool, memory_bundles, speech_earshot,
+        fact_pool, memory_bundles, speech_earshot, identities,
     )
     user_content = json.dumps(data_payload, indent=None) + "\n\n" + INSTRUCTION_PROMPT
 
@@ -242,6 +243,7 @@ def _build_data_payload(
     fact_pool: FactPool | None = None,
     memory_bundles: dict[str, MemoryBundle] | None = None,
     speech_earshot: dict | None = None,
+    identities: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the JSON data payload for message 2.
 
@@ -277,6 +279,7 @@ def _build_data_payload(
         agent_block = _build_agent_block(
             scheduled, ctx, present_ids, harmonic_state, emotional_deltas,
             fact_pool, bundle, urg,
+            identity_clause=(identities or {}).get(scheduled.agent_id),
         )
         # Speaking role: addressee responds fully, bystanders stay quiet,
         # group_addressed means everyone can speak but should differentiate.
@@ -418,6 +421,7 @@ def _build_agent_block(
     fact_pool: FactPool | None = None,
     memory_bundle: MemoryBundle | None = None,
     urgency: float = 0.0,
+    identity_clause: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a single agent block (Layer 2) scaled by tier AND urgency.
 
@@ -474,6 +478,8 @@ def _build_agent_block(
             "ticks_since_last_action": scheduled.ticks_since_last_action,
             "harmonic_state": _build_harmonic_data(agent_id, harmonic_state, tier),
         }
+        if identity_clause:
+            block["identity"] = identity_clause
         if recent_events:
             block["recent_events"] = recent_events
 
@@ -511,6 +517,8 @@ def _build_agent_block(
         "harmonic_state": harmonic_data,
         "recent_events": recent_events,
     }
+    if identity_clause:
+        block["identity"] = identity_clause
 
     # --- Curvature-driven truncation gradient (Tier 0 only) ---
     if urgency < 0.7:

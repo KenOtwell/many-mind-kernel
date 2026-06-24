@@ -51,6 +51,7 @@ from qdrant_client.models import (
 from shared.config import settings
 from shared.constants import (
     COLLECTION_AGENT_STATE,
+    COLLECTION_GOALS,
     COLLECTION_LORE,
     COLLECTION_NPC_MEMORIES,
     COLLECTION_NPC_PROFILES,
@@ -221,6 +222,26 @@ async def ensure_collections() -> None:
         except Exception as exc:
             logger.error("Failed to create %s: %s", COLLECTION_NPC_PROFILES, exc)
 
+    if COLLECTION_GOALS not in existing:
+        try:
+            await client.create_collection(
+                collection_name=COLLECTION_GOALS,
+                vectors_config={
+                    # Goal attractors share the memory dual-vector shape so goal
+                    # priming reuses the retrieval machinery: semantic 384d
+                    # (trigger/affordance language) + emotional 9d (affect signature).
+                    "semantic": VectorParams(
+                        size=SEMANTIC_DIM, distance=Distance.COSINE,
+                    ),
+                    "emotional": VectorParams(
+                        size=EMOTIONAL_DIM, distance=Distance.COSINE,
+                    ),
+                },
+            )
+            logger.info("Created collection: %s", COLLECTION_GOALS)
+        except Exception as exc:
+            logger.error("Failed to create %s: %s", COLLECTION_GOALS, exc)
+
 
 # ---------------------------------------------------------------------------
 # Memory writes — RAW and MOD/MAX tiers
@@ -286,6 +307,94 @@ async def write_memory(
         )
 
     return point_id
+
+
+# ---------------------------------------------------------------------------
+# Goal nodes — skyrim_goals collection
+# ---------------------------------------------------------------------------
+
+async def write_goal(
+    goal_id: str,
+    statement: str,
+    semantic_vec: list[float],
+    emotional_vec: list[float],
+    payload: dict[str, Any],
+) -> str:
+    """Upsert one goal node to skyrim_goals.
+
+    Idempotent on goal_id: callers pass a deterministic ID (uuid5 of the goal's
+    logical name) so re-seeding on startup overwrites in place rather than
+    duplicating. The semantic vector is the goal's trigger/affordance signature;
+    the emotional vector is its affective attractor.
+
+    Args:
+        goal_id:       Deterministic point ID (UUID string).
+        statement:     The goal as the agent would recall it (recalled content).
+        semantic_vec:  Pre-computed 384d trigger embedding.
+        emotional_vec: Pre-computed 9d affective signature.
+        payload:       Goal metadata (name, role, owner, state, base_weight,
+                       edges, predicates, ...). Merged with the statement.
+
+    Returns:
+        The goal_id (for linking / dedup), even on write failure.
+    """
+    full_payload: dict[str, Any] = {"statement": statement, "wall_ts": time.time()}
+    full_payload.update(payload)
+    try:
+        await get_client().upsert(
+            collection_name=COLLECTION_GOALS,
+            points=[
+                PointStruct(
+                    id=goal_id,
+                    vector={"semantic": semantic_vec, "emotional": emotional_vec},
+                    payload=full_payload,
+                )
+            ],
+        )
+    except Exception as exc:
+        logger.error("write_goal failed — id=%s: %s", goal_id, exc)
+
+    return goal_id
+
+
+# ---------------------------------------------------------------------------
+# NPC profiles — skyrim_npc_profiles (read-only seed)
+# ---------------------------------------------------------------------------
+
+def _npc_profile_point_id(slug: str) -> str:
+    """Deterministic point ID for a seeded NPC profile.
+
+    Mirrors scripts/import_seed_data.py stable_id('npc_profile', slug) so a
+    runtime read can fetch the seeded profile directly by ID — no scan, no
+    embedding. Keep this formula in sync with the importer.
+    """
+    return str(uuid5(NAMESPACE_DNS, f"mmk:npc_profile:{slug}"))
+
+
+async def read_profile(slug: str) -> dict[str, Any] | None:
+    """Read one seeded NPC profile from skyrim_npc_profiles by slug.
+
+    Returns the payload dict (slug, bio_text, tags, voice_type,
+    has_personality, and personality when present) or None if there is no such
+    profile or Qdrant is unreachable. Pure ID fetch — no vector search, so it
+    works before the embedding model is loaded (identity bootstrap on addnpc).
+    """
+    if not slug:
+        return None
+    point_id = _npc_profile_point_id(slug)
+    try:
+        results = await get_client().retrieve(
+            collection_name=COLLECTION_NPC_PROFILES,
+            ids=[point_id],
+            with_payload=True,
+            with_vectors=False,
+        )
+    except Exception as exc:
+        logger.warning("read_profile failed — slug=%s: %s", slug, exc)
+        return None
+    if not results:
+        return None
+    return results[0].payload
 
 
 # ---------------------------------------------------------------------------

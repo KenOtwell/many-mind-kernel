@@ -424,6 +424,25 @@ class HarmonicBuffer:
         """Return the current emotional state (fast trace) as a list."""
         return self.fast.tolist()
 
+    def nudge(self, delta: list[float] | np.ndarray, now: float | None = None) -> "EmotionalDelta | None":
+        """Apply an additive emotional nudge and re-run the EMA update.
+
+        Used by goal resonance: a curiosity spike (or standing motivational
+        pull) is a direction*gain vector added to the current fast state. We
+        target fast + delta and let update() smooth it, so curvature/snap/
+        coherence reflect the salience rise and the scheduler can promote the
+        agent's attention this same turn.
+
+        Returns the resulting EmotionalDelta, or None if the buffer is
+        uninitialized — a nudge on an agent with no emotional state yet is
+        meaningless (nothing to perturb).
+        """
+        if not self._initialized:
+            return None
+        arr = np.asarray(delta, dtype=np.float32)
+        target = self.fast + arr
+        return self.update(target, now=now)
+
 
 class HarmonicState:
     """Container managing harmonic buffers for all agents.
@@ -460,6 +479,15 @@ class HarmonicState:
         if buf is None:
             return list(ZERO_SEMAGRAM)
         return buf.get_semagram()
+
+    def get_certainty(self, agent_id: str) -> float:
+        """Return an agent's EMA-smoothed certainty factor (1.0 if unknown).
+
+        Used by the goal-dissonance calculation as the uncertainty term, so
+        callers need not reach into the buffer's private state.
+        """
+        buf = self._buffers.get(agent_id)
+        return buf._certainty if buf is not None else 1.0
 
     def get_deviation(self, agent_id: str) -> list[float]:
         """Return the emotional deviation from personality baseline.
@@ -511,6 +539,19 @@ class HarmonicState:
         """
         buf = self._get_or_create(agent_id)
         buf.set_certainty(certainty)
+
+    def apply_nudge(
+        self, agent_id: str, delta: list[float] | np.ndarray,
+    ) -> EmotionalDelta | None:
+        """Apply an emotional nudge to an agent's buffer (goal resonance).
+
+        No-op returning None for unknown or uninitialized agents — the nudge
+        only perturbs an existing felt state, it never bootstraps one.
+        """
+        buf = self._buffers.get(agent_id)
+        if buf is None or not buf._initialized:
+            return None
+        return buf.nudge(delta)
 
     def cool_all(self, now: float | None = None) -> None:
         """Apply temporal decay to all agent buffers.

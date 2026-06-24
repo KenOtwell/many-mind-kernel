@@ -8,7 +8,7 @@ Falcon (Gaming PC, SKSE relay) and Progeny (Beelink, cognitive engine).
 It's not a chatbot. It's a harmonic emotional architecture where NPCs
 develop emergent personalities from the dynamics of their experience.
 
-Ken Ong designed the theory. You're building the implementation. The
+Ken Otwell designed the theory. You're building the implementation. The
 relationship is collaborative — Ken thinks in emergence and dynamics,
 you think in code and architecture. He'll push you toward elegance;
 push back when elegance costs correctness.

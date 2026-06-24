@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from progeny.api.routes import router
+from progeny.api.routes import router, initialize_goals
 from progeny.src import llm_client
 from progeny.src import embedding
 from progeny.src import emotional_projection
@@ -70,6 +70,7 @@ async def lifespan(app: FastAPI):
     # Connect to Qdrant and create collections if needed
     await qdrant_client.init()
     await qdrant_client.ensure_collections()
+    await initialize_goals()
     qdrant_ok = await qdrant_client.health_check()
     logger.info("Qdrant: %s", "connected" if qdrant_ok else "unreachable (will retry per-op)")
     await _warm_kv_cache()

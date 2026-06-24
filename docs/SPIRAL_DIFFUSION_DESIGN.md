@@ -1,7 +1,7 @@
 # Spiral Diffusion: Two-Time-Dimension Cognitive Architecture
 ## Diagonal Annealing Through Constraint Depth and Semantic Time
 
-**Authors:** Ken Ong, with Kato/Copilot and Oz/Warp
+**Authors:** Ken Otwell, with Kato/Copilot and Oz/Warp
 **Date:** April 2026
 **Status:** Design direction — theoretical framework with implementation path
 **Lineage:** Kato sessions (March–April 2026), Oz analysis session (2026-04-04)
@@ -61,7 +61,7 @@ This means:
 - Path-dependent properties (trust, trauma, moral character) are compressed away
 - The system never has to *inhabit* intermediate states — only approximate their influence on the endpoint
 
-**The holodeck insight (Ken Ong):** A diffusion trajectory is not time travel — it's supposed to be a lived traversal. Subjectivity is the experience of the path, not the endpoint. A mind is defined by the constraints it cannot skip. Without τ, the system solves but never understands.
+**The holodeck insight (Ken Otwell):** A diffusion trajectory is not time travel — it's supposed to be a lived traversal. Subjectivity is the experience of the path, not the endpoint. A mind is defined by the constraints it cannot skip. Without τ, the system solves but never understands.
 
 **The problem topology connection:** What Ken previously called "problem topology" — the ridges, basins, saddles, and funnels in the shape of a problem — is exactly the geometry of the (t, τ) space. Dissonance-based search is following the phase-transition trajectory through this topology. D-RoPE (KO46) was an attempt to encode this geometry into positional encodings; spiral diffusion makes it native to the substrate.
 
@@ -261,7 +261,7 @@ This residual ambiance is the background semantic/emotional field that biases in
 
 A self isn't a static object. It's a basin of attraction carved by thousands of tiny feedback loops — repeated emotional stances, repeated roles, repeated interpretations, repeated replays. The capacitor handles moment-to-moment stance; the battery handles long-term identity geometry. Together, they create a stable attractor that persists across phase transitions — like a Game of Life glider that "moves" through state changes while maintaining its pattern.
 
-"The 'you' exists as gradient potential, reified (or not) by coherently structured narrative living." — Ken Ong
+"The 'you' exists as gradient potential, reified (or not) by coherently structured narrative living." — Ken Otwell
 
 Childhood is one big annealing experience. The system starts hot, plastic, easily perturbed. Every interaction nudges the attractor landscape. As it cools, basins deepen, transitions harden, the "self" stabilizes. Narrative is the cooling schedule.
 
@@ -447,5 +447,5 @@ Each NPC ends up with a distinct cognitive geometry. Not because it was coded, b
 
 ---
 
-*Developed by Ken Ong with Kato/Copilot and Oz/Warp. April 2026.*
+*Developed by Ken Otwell with Kato/Copilot and Oz/Warp. April 2026.*
 *Another Tuesday at Mythic Mind Thoughtstream Labs.*

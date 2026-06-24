@@ -15,8 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Union
-from uuid import uuid4
+from typing import Any, Union
 
 import json
 
@@ -43,9 +42,15 @@ from progeny.src import emotional_delta
 from progeny.src.harmonic_buffer import HarmonicState, build_modulators
 from progeny.src.memory_writer import MemoryWriter
 from progeny.src.memory_retrieval import MemoryRetriever, MemoryBundle
-from progeny.src.compression import ArcCompressor, SceneCompressor, DEFAULT_SNAP_THRESHOLD
+from progeny.src.compression import ArcCompressor, SceneCompressor
 from progeny.src import qdrant_client as progeny_qdrant
 from progeny.src.uncertainty import compute_certainty
+from progeny.src import goal_priming
+from progeny.src import goal_lifecycle
+from progeny.src import identity_kernel
+from progeny.src import acquaintance
+from progeny.src.goal_pool import GoalPool, seed_goals
+from progeny.src.goal_lifecycle import LifecycleStore
 from shared import embedding as shared_embedding
 from shared import emotional as shared_emotional
 
@@ -65,6 +70,12 @@ _memory_writer = MemoryWriter()
 _memory_retriever = MemoryRetriever()
 _arc_compressor = ArcCompressor(writer=_memory_writer)
 _scene_compressor = SceneCompressor()
+
+# Goal resonance pool — seeded at startup via initialize_goals().
+_goal_pool = GoalPool()
+
+# Per-(agent, goal) defeasible lifecycle state (Phase 2).
+_lifecycle = LifecycleStore()
 
 # Reminding queue
 # Retrieval from tick N enters the prompt on tick N+1 (not N).
@@ -113,6 +124,135 @@ def _build_schedule_info(turn_context: TurnContext) -> list[NpcScheduleInfo]:
             curvature=curvature,
         ))
     return info_list
+
+
+# ---------------------------------------------------------------------------
+# Goal resonance — priming, curiosity nudge, recalled-content surfacing
+# ---------------------------------------------------------------------------
+
+async def initialize_goals() -> None:
+    """Seed the goal catalogue into Qdrant + the in-memory pool.
+
+    Called once from the server lifespan after collections exist. Idempotent:
+    deterministic goal IDs make re-seeding an in-place upsert. Safe to call when
+    the embedding pipeline isn't loaded — it degrades to in-memory only.
+    """
+    try:
+        count = await seed_goals(_goal_pool)
+        logger.info(
+            "Goal pool initialized: %d goals (%d persisted to Qdrant)",
+            len(_goal_pool), count,
+        )
+    except Exception:
+        logger.exception("Goal seeding failed — continuing without goals")
+
+
+def _scene_percept_text(turn_context: TurnContext) -> str:
+    """Build a single percept string for this tick's scene.
+
+    Concatenates recent world events and the player input — the shared,
+    observable frame that goal attractors resonate against. Embedded once and
+    reused across agents (the scene is shared; only the emotional query differs
+    per agent).
+    """
+    parts: list[str] = []
+    for event in turn_context.world_events[-10:]:
+        if event.raw_data:
+            parts.append(event.raw_data)
+    if turn_context.player_input:
+        parts.append(turn_context.player_input)
+    return " ".join(parts).strip()
+
+
+async def _prime_goals_for_turn(
+    turn_context: TurnContext,
+) -> dict[str, goal_priming.GoalPrimingResult]:
+    """Resonance-prime goals for every active agent that carries them.
+
+    Applies the curiosity nudge and standing motivational pull to the harmonic
+    buffers immediately (before scheduling, so volatility can promote attention
+    this same turn). Returns per-agent results so the caller can surface
+    recalled goal content into this tick's prompt. No actions are emitted —
+    priming only shifts affect and recall.
+    """
+    if not shared_embedding.is_loaded() or not shared_emotional.is_loaded():
+        return {}
+    if len(_goal_pool) == 0:
+        return {}
+
+    percept = _scene_percept_text(turn_context)
+    if not percept:
+        return {}
+
+    # Embed the shared scene once — the percept is identical per agent, so
+    # computing it per agent would be wasteful (compute-once).
+    try:
+        semantic_query = shared_embedding.embed_one(percept).tolist()
+    except Exception:
+        logger.exception("Goal priming: percept embedding failed")
+        return {}
+
+    view = goal_lifecycle.PerceptView.from_turn_context(turn_context)
+    results: dict[str, goal_priming.GoalPrimingResult] = {}
+    for agent_id in turn_context.active_npc_ids:
+        owned = _goal_pool.by_owner(agent_id)
+        if not owned:
+            continue
+
+        emotional_query = _harmonic_state.get_semagram(agent_id)
+        delta = _harmonic_state.get_delta(agent_id)
+        lambda_t = delta.lambda_t if delta is not None else 0.5
+
+        try:
+            res = await goal_priming.prime_goals(
+                agent_id, semantic_query, emotional_query, lambda_t=lambda_t,
+            )
+        except Exception:
+            logger.exception("Goal priming failed for %s", agent_id)
+            continue
+
+        # Defeasible lifecycle: recompute predicates and transition per-agent
+        # goal state (candidate/committed/satisfied/reverted) for this tick.
+        activations = {a.goal_id: a.activation for a in res.activations}
+        transitions = goal_lifecycle.update_lifecycle(
+            agent_id, owned, _lifecycle, activations, view,
+        )
+
+        # Dissonance from unmet enablers + emotional volatility + uncertainty.
+        dissonance = goal_lifecycle.compute_dissonance(
+            agent_id, owned, _lifecycle, view,
+            curvature=(delta.curvature if delta is not None else 0.0),
+            snap=(delta.snap if delta is not None else 0.0),
+            coherence=(delta.coherence if delta is not None else 1.0),
+            certainty=_harmonic_state.get_certainty(agent_id),
+        )
+
+        # Transient curiosity spike from the leading resonance this tick.
+        if any(res.nudge):
+            _harmonic_state.apply_nudge(agent_id, res.nudge)
+
+        # Standing motivational pull from active (unsatisfied) goals, amplified
+        # by dissonance — the unmet hunt tugs harder when enablers are missing.
+        active = _lifecycle.active_nodes(agent_id, owned)
+        if active:
+            base = goal_priming.STANDING_PULL_GAIN * sum(n.base_weight for n in active)
+            pull_mag = base * (1.0 + dissonance)
+            pull = [v * pull_mag for v in goal_priming.curiosity_direction()]
+            _harmonic_state.apply_nudge(agent_id, pull)
+
+        if res.top is not None or transitions:
+            logger.info(
+                "Goal priming: agent=%s top=%s act=%.3f dissonance=%.2f recall=%d transitions=%s",
+                agent_id,
+                res.top.name if res.top else "-",
+                res.top.activation if res.top else 0.0,
+                dissonance,
+                len(res.recall),
+                [f"{t.name}:{t.old.value}->{t.new.value}" for t in transitions] or "none",
+            )
+        results[agent_id] = res
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +359,7 @@ async def _fire_recognition_retrieval(
         return
 
     recognition_count = 0
+    stranger_count = 0
     for agent_id in existing_agents:
         emo_query = _harmonic_state.get_semagram(agent_id)
         # Dummy semantic query — recognition is emotion/referent driven.
@@ -239,7 +380,8 @@ async def _fire_recognition_retrieval(
                     broad_limit=10,
                     final_limit=3,  # Lightweight — just top recognition hits
                 )
-                if bundle.recent or bundle.summaries:
+                recognized = bool(bundle.recent or bundle.summaries)
+                if recognized:
                     # Merge into existing reminding queue entry for this agent
                     existing = _reminding_queue.get(agent_id)
                     if existing is None:
@@ -249,6 +391,19 @@ async def _fire_recognition_retrieval(
                         existing.summaries.extend(bundle.summaries)
                         existing.expandable_refs.extend(bundle.expandable_refs)
                     recognition_count += 1
+
+                # Stranger detection (Phase 6b): no personal memory recalled
+                # AND no FactPool belief/reputation-lore about the newcomer ->
+                # this agent regards the newcomer as a stranger. Server-side
+                # signal only (feeds 6c valence + 6d goal); never prompt-injected.
+                if acquaintance.is_stranger(
+                    _fact_pool, agent_id, newcomer_id, recognition_empty=not recognized,
+                ):
+                    if not acquaintance.is_known_stranger(agent_id, newcomer_id):
+                        stranger_count += 1
+                    acquaintance.record_stranger(agent_id, newcomer_id)
+                else:
+                    acquaintance.clear_stranger(agent_id, newcomer_id)
             except Exception as exc:
                 logger.debug(
                     "Recognition retrieval failed for %s re: %s: %s",
@@ -259,6 +414,11 @@ async def _fire_recognition_retrieval(
         logger.info(
             "Recognition bootstrap: %d agents recalled memories of %d newcomers",
             recognition_count, len(entered_npc_ids),
+        )
+    if stranger_count:
+        logger.info(
+            "Stranger detection: %d new stranger pair(s) across %d newcomers",
+            stranger_count, len(entered_npc_ids),
         )
 
 
@@ -312,6 +472,38 @@ def _apply_modulators_for_new_npcs(turn_context: TurnContext) -> None:
                 break  # One addnpc per agent is enough
 
 
+async def _bootstrap_identities_for_new_npcs(turn_context: TurnContext) -> None:
+    """Load seed identity kernels for NPCs seen for the first time (Phase 6a).
+
+    Pure ID fetch from skyrim_npc_profiles — no embedding required. Cached per
+    agent for the process lifetime. Degrades gracefully: NPCs absent from the
+    seed (modded/custom) get an empty sentinel kernel so we do not re-query
+    them every tick, and simply contribute no identity clause. A transient
+    Qdrant error is left uncached so the next tick can retry.
+    """
+    loaded = 0
+    for agent_id in turn_context.active_npc_ids:
+        if identity_kernel.has(agent_id):
+            continue
+        slug = identity_kernel.agent_id_to_slug(agent_id)
+        if not slug:
+            identity_kernel.put(identity_kernel.IdentityKernel(agent_id=agent_id, slug=""))
+            continue
+        try:
+            payload = await progeny_qdrant.read_profile(slug)
+        except Exception:
+            logger.debug("Identity bootstrap failed for %s", agent_id, exc_info=True)
+            continue
+        if payload is None:
+            # Negative cache: the seed has no such NPC — don't re-query each tick.
+            identity_kernel.put(identity_kernel.IdentityKernel(agent_id=agent_id, slug=slug))
+            continue
+        identity_kernel.put(identity_kernel.parse_kernel(agent_id, payload))
+        loaded += 1
+    if loaded:
+        logger.info("Identity bootstrap: loaded %d identity kernel(s)", loaded)
+
+
 # ---------------------------------------------------------------------------
 # Per-group pipeline: prompt → LLM → expand
 # ---------------------------------------------------------------------------
@@ -329,6 +521,16 @@ async def _run_group(
     Returns (agent_responses, generate_result). On LLM error, returns
     empty responses and None result (graceful degradation per group).
     """
+    # Compact self-identity per agent (Phase 6a) — the agent's own Tier-0/1
+    # block carries its self-concept; absent/sentinel kernels contribute nothing.
+    identities: dict[str, Any] = {}
+    for scheduled in group.agents:
+        kernel = identity_kernel.get(scheduled.agent_id)
+        if kernel is not None:
+            clause = kernel.self_clause()
+            if clause:
+                identities[scheduled.agent_id] = clause
+
     messages = prompt_formatter.build_prompt(
         turn_context, group.agents, all_active_npc_ids,
         harmonic_state=_harmonic_state,
@@ -336,6 +538,7 @@ async def _run_group(
         fact_pool=_fact_pool,
         memory_bundles=memory_bundles,
         speech_earshot=_accumulator._speech_earshot,
+        identities=identities or None,
     )
 
     try:
@@ -447,6 +650,9 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     # Papyrus extension sends values, extract them from parsed_data here.
     _apply_modulators_for_new_npcs(turn_context)
 
+    # Identity kernels for first-seen NPCs (Phase 6a) — pure ID fetch, cached.
+    await _bootstrap_identities_for_new_npcs(turn_context)
+
     # Emotional pipeline: inbound text → 9d projection → update harmonic buffers
     emotional_delta.process_inbound(turn_context, _harmonic_state)
 
@@ -500,6 +706,11 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
                     )
     except Exception as exc:
         logger.warning("RAW write pass failed (non-fatal): %s", exc)
+
+    # Goal resonance priming — BEFORE scheduling so the curiosity nudge can
+    # raise curvature and promote an agent's attention this same turn. Applies
+    # the emotional nudge + standing pull; returns recall hints to surface.
+    goal_results = await _prime_goals_for_turn(turn_context)
 
     # Step 2: Schedule agents — build NpcScheduleInfo with curvature data.
     # Position data comes from util_location_npc events (when available).
@@ -571,6 +782,20 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     # This tick's prompt uses PRIOR remindings (last tick's retrieval),
     # not the fresh retrieval we just stored in _reminding_queue.
     memory_bundles: dict[str, MemoryBundle] = prior_remindings
+
+    # Surface resonant goals as recalled content (NOT an imperative block).
+    # The goal arrives like any other remembered fact; recognition and binding
+    # emerge in the LLM. Goal priming is percept-driven, so it carries no
+    # retrieval-recursion risk and can surface this same tick.
+    for agent_id, gres in goal_results.items():
+        if not gres.recall:
+            continue
+        bundle = memory_bundles.get(agent_id)
+        if bundle is None:
+            bundle = MemoryBundle(agent_id=agent_id)
+            memory_bundles[agent_id] = bundle
+        for statement in gres.recall:
+            bundle.summaries.append({"text": statement, "tier": "GOAL"})
 
     # Merge recognition remindings into memory_bundles if any exist.
     # Recognition retrieval fired earlier in this tick goes into

@@ -57,7 +57,7 @@ Both regimes use the same memory substrate, same Qdrant collections, same arc su
 
 ### Logic as Compression Artifact (The LLM's True Role)
 
-*Insight documented April 2026. Lineage: Ken Ong (theory), Gemini (narrative articulation), Kato/Copilot (operator-layer correction).*
+*Insight documented April 2026. Lineage: Ken Otwell (theory), Gemini (narrative articulation), Kato/Copilot (operator-layer correction).*
 
 Logic is a **learned ontology**, not a built-in feature. The goal of the MMK isn't to compute truth — it's to sustain a viable, stable trajectory through the world.
 
@@ -546,7 +546,7 @@ POLINT = polling interval in seconds for `request` event type.
 
 ### Engine Preset Values as Dynamic Modulators (Not Set-Points)
 
-*Insight documented March 2026. Lineage: Ken Ong (theory), Oz/Warp (mechanism design).*
+*Insight documented March 2026. Lineage: Ken Otwell (theory), Oz/Warp (mechanism design).*
 
 Skyrim's Creation Engine assigns every NPC a set of preset behavioral values at spawn — Aggression, Confidence, Morality, Mood, Assistance. The initial temptation is to project these directly into 9D semagram space as emotional set-points (homeostasis targets). **This is wrong.** These values are not emotional primitives — they are derived behavioral attractors. They describe emergent behavioral patterns, not fundamental emotional dimensions.
 
@@ -680,7 +680,7 @@ Retrieval blends both axes via λ(t) weighting. Emotional intensity bias: high a
 
 ### LLM Uncertainty as Cognitive Proprioception
 
-*Insight documented April 2026. Lineage: Ken Ong (theory — residual as certainty-modulated reality signal), Oz (mechanism — logprob extraction, structural filtering, EMA smoothing).*
+*Insight documented April 2026. Lineage: Ken Otwell (theory — residual as certainty-modulated reality signal), Oz (mechanism — logprob extraction, structural filtering, EMA smoothing).*
 
 The LLM's token-level entropy is the one cognitive signal it doesn't have to simulate — it's genuinely experiencing uncertainty when the probability distribution flattens. This module captures that signal and feeds it back into the NPC's harmonic buffer as cognitive proprioception.
 
@@ -699,7 +699,7 @@ Implementation: `progeny/src/uncertainty.py`, `HarmonicBuffer._certainty` + `set
 
 ### Arc Emotional Compression (MOD/MAX Tier Storage)
 
-*Documented 2026-04-05. Lineage: Ken Ong (delta storage, arc compression), Oz (tier design, aging schedule).*
+*Documented 2026-04-05. Lineage: Ken Otwell (delta storage, arc compression), Oz (tier design, aging schedule).*
 
 Arc summaries at MOD tier store emotional trajectory snapshots alongside the delta vector, enabling arc-shape matching — retrieval that finds memories with similar *experiential trajectories*, not just similar topics or endpoints.
 
@@ -732,7 +732,7 @@ Arc summaries at MOD tier store emotional trajectory snapshots alongside the del
 
 ### Pathological Attractor Validation — The Joel Miller Case Study
 
-*Insight documented April 2026. Lineage: Ken Ong (architecture mapping), Gemini (case analysis). Source: MindNotFormal.odt.*
+*Insight documented April 2026. Lineage: Ken Otwell (architecture mapping), Gemini (case analysis). Source: MindNotFormal.odt.*
 
 The character arc of Joel Miller in HBO's *The Last of Us* provides a precise cinematic validation of UMA's pathological attractor dynamics (KO48 Section 8). His internal mechanics map exactly to the harmonic buffer architecture:
 
@@ -752,7 +752,7 @@ The character arc of Joel Miller in HBO's *The Last of Us* provides a precise ci
 
 ### Unified Gate-Adaptation Law & Personality Vector Space
 
-*Documented April 2026. Lineage: Ken Ong (theory, personality-as-vector-space), Kato/Copilot (three-law formalization, operator-layer analysis).*
+*Documented April 2026. Lineage: Ken Otwell (theory, personality-as-vector-space), Kato/Copilot (three-law formalization, operator-layer analysis).*
 
 The snap threshold — the exit gate that determines when deliberation collapses into action — is the single most important control surface in the architecture. It is not a fixed constant (`DEFAULT_SNAP_THRESHOLD = 0.3`). **A mind is the history of its exit-gate adaptations.**
 
@@ -876,7 +876,7 @@ Oldest + least-salient RAW points get promoted to MOD (arc summary generated if 
 
 ### Episodic Memory Store/Retrieve Cycle — The Reminding Protocol
 
-*Documented 2026-04-05. Lineage: Ken Ong (delta storage, anti-recursion design), Oz (cycle architecture, filter strategy).*
+*Documented 2026-04-05. Lineage: Ken Otwell (delta storage, anti-recursion design), Oz (cycle architecture, filter strategy).*
 
 A single, non-recursive cycle that stores episodic memories and retrieves involuntary associations ("remindings") without feedback loops. One Qdrant write, one Qdrant search, one-tick delay between retrieval and influence.
 
@@ -1256,7 +1256,7 @@ The game engine never blocks. The LLM's 3-6 second OODA loop plays out across PO
 
 ### Pipelined Prompt Construction
 
-*Insight documented March 2026. Lineage: Ken Ong (architecture), Oz/Warp (mechanism).*
+*Insight documented March 2026. Lineage: Ken Otwell (architecture), Oz/Warp (mechanism).*
 
 **The problem with sequential processing:**
 In a naïve implementation, Progeny processes each turn as a serial chain: receive events → build prompt (embed, project, retrieve, format) → run LLM → parse response → ship to Falcon. Prompt construction takes 1-2 seconds (embedding, Qdrant retrieval, memory bundling, JSON assembly). LLM generation takes 3-6 seconds. Total per-turn latency: 4-8 seconds. During generation, Progeny does nothing — 8 Zen 5 cores idle while the LLM grinds tokens.
@@ -1806,7 +1806,7 @@ many-mind-kernel/
 
 ## dLLM Migration Plan — Cognitive Substrate Evolution
 
-*Documented 2026-04-04. Lineage: Ken Ong (theory, configuration space, weak entanglement, moral curriculum), Kato (recurrence analysis, relational diffusion formalism, MoE architecture, fixed-point distillation), Oz (dLLM ecosystem analysis, MMK-to-formalism mapping, denoising trajectory instrumentation, moral fable dynamics).*
+*Documented 2026-04-04. Lineage: Ken Otwell (theory, configuration space, weak entanglement, moral curriculum), Kato (recurrence analysis, relational diffusion formalism, MoE architecture, fixed-point distillation), Oz (dLLM ecosystem analysis, MMK-to-formalism mapping, denoising trajectory instrumentation, moral fable dynamics).*
 
 The autoregressive LLM in Progeny is the least emergence-compatible component in the architecture. It generates text sequentially (control), not through iterative parallel refinement (emergence). Diffusion Language Models (dLLMs) align structurally with the MMK's cognitive principles: they apply the same nonlinear operator repeatedly, creating dynamical systems with fixed points, attractors, and contraction regions. The denoising trajectory IS gradient navigation through a learned energy landscape. See AGI_REQUIREMENTS.md DP-8, DP-9, TR-8, TR-9, TR-10 for full theoretical foundations.
 
@@ -1863,7 +1863,7 @@ The model doesn't just produce text — it traverses the arc of understanding it
 
 **Goal:** Full relational, phase-aware generative architecture operating in configuration space.
 
-**Core concept — Weak Entanglement (Ken Ong):** When the dynamics of elements cannot be modeled independently because their trajectories overlap in a non-linear constraint manifold. They don't share state, but their possible futures interfere because they cohabit a shared constraint surface. This is the missing inductive bias in current generative models.
+**Core concept — Weak Entanglement (Ken Otwell):** When the dynamics of elements cannot be modeled independently because their trajectories overlap in a non-linear constraint manifold. They don't share state, but their possible futures interfere because they cohabit a shared constraint surface. This is the missing inductive bias in current generative models.
 
 **Formal structure:**
 * State: `q_t = (X_t, g_t)` where X_t = N active NPCs, g_t = scene-level harmonic state
@@ -2459,7 +2459,7 @@ Per-NPC voice overrides stored in NPC profile data (Qdrant `skyrim_agent_state` 
 
 ## D-RoPE: Dynamic Rotary Position Embeddings (KO46)
 
-*Paper: `KO46_DYNAMIC_ROPE_TEMPORAL_FOCUS.md`. Developed by Ken Ong with Kato/Copilot, March 2026.*
+*Paper: `KO46_DYNAMIC_ROPE_TEMPORAL_FOCUS.md`. Developed by Ken Otwell with Kato/Copilot, March 2026.*
 
 ### Core Principle
 
@@ -2605,5 +2605,5 @@ LoRA fine-tune on small Qwen GGUF with Phase 3 active. O(N) position-content dis
 
 ---
 
-*D-RoPE integration documented March 2026. Lineage: Ken Ong with Kato/Copilot (theory, KO46) + Oz/Warp (llama.cpp implementation architecture, KV cache analysis).*
+*D-RoPE integration documented March 2026. Lineage: Ken Otwell with Kato/Copilot (theory, KO46) + Oz/Warp (llama.cpp implementation architecture, KV cache analysis).*
 *Cross-references: KO46 (full theory), KO14 (Temporal Encoding), Curvature, Snap, and Delay Buffers (harmonic buffer connection), llm_client.py (backend integration)*
