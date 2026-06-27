@@ -17,7 +17,7 @@ import logging
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from shared.constants import COLLECTION_GOALS, EMOTIONAL_DIM
+from shared.constants import COLLECTION_GOALS
 from progeny.src.goal_pool import OWNER_ALL
 from progeny.src.qdrant_client import search_vector
 from mindcore.goal import (
@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 # Re-exported from mindcore for backwards-compat with any existing imports.
-__all__ = ["GoalActivation", "GoalPrimingResult", "prime_goals"]
+__all__ = [
+    "GoalActivation", "GoalPrimingResult", "prime_goals",
+    # mindcore.goal symbols consumed through this module's namespace by routes.py.
+    "curiosity_direction", "CURIOSITY_GAIN", "STANDING_PULL_GAIN",
+]
 
 # Axis indices — re-exported so tests that reference them directly still work.
 EXCITEMENT_AXIS: int = 4
