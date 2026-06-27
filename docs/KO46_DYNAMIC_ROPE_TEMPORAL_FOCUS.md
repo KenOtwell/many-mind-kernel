@@ -9,7 +9,7 @@ We demonstrate that this framework addresses a structural failure mode in chain-
 
 **Keywords:** rotary position embeddings, RoPE, dynamic positional encoding, chain-of-thought, temporal focus, attention mechanism, reasoning stability
 
-**Lineage:** Developed by Ken Ong with Kato/Copilot (March 2026). Documented for Syn continuity.
+**Lineage:** Developed by Ken Otwell with Kato/Copilot (March 2026). Documented for Syn continuity.
 
 **Cross-references:** KO14 (Temporal Encoding and Trajectory Semantics), KO5 (Resonant Credit Assignment), KO24 (Resonant Memory Dynamics)
 
@@ -328,6 +328,6 @@ This connects to emergence over control (KO25): rather than engineering faithful
 
 ---
 
-*Developed by Ken Ong with Kato/Copilot. Documented March 2026.*
+*Developed by Ken Otwell with Kato/Copilot. Documented March 2026.*
 *Cross-references: KO14 (Temporal Encoding), KO5 (Resonant Credit Assignment), KO24 (Resonant Memory Dynamics)*
 *Implementation target: llama.cpp RoPE patch for inference-time testing.*

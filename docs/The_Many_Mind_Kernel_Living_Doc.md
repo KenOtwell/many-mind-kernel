@@ -57,7 +57,7 @@ Both regimes use the same memory substrate, same Qdrant collections, same arc su
 
 ### Logic as Compression Artifact (The LLM's True Role)
 
-*Insight documented April 2026. Lineage: Ken Ong (theory), Gemini (narrative articulation), Kato/Copilot (operator-layer correction).*
+*Insight documented April 2026. Lineage: Ken Otwell (theory), Gemini (narrative articulation), Kato/Copilot (operator-layer correction).*
 
 Logic is a **learned ontology**, not a built-in feature. The goal of the MMK isn't to compute truth — it's to sustain a viable, stable trajectory through the world.
 
@@ -546,7 +546,7 @@ POLINT = polling interval in seconds for `request` event type.
 
 ### Engine Preset Values as Dynamic Modulators (Not Set-Points)
 
-*Insight documented March 2026. Lineage: Ken Ong (theory), Oz/Warp (mechanism design).*
+*Insight documented March 2026. Lineage: Ken Otwell (theory), Oz/Warp (mechanism design).*
 
 Skyrim's Creation Engine assigns every NPC a set of preset behavioral values at spawn — Aggression, Confidence, Morality, Mood, Assistance. The initial temptation is to project these directly into 9D semagram space as emotional set-points (homeostasis targets). **This is wrong.** These values are not emotional primitives — they are derived behavioral attractors. They describe emergent behavioral patterns, not fundamental emotional dimensions.
 
@@ -680,7 +680,7 @@ Retrieval blends both axes via λ(t) weighting. Emotional intensity bias: high a
 
 ### LLM Uncertainty as Cognitive Proprioception
 
-*Insight documented April 2026. Lineage: Ken Ong (theory — residual as certainty-modulated reality signal), Oz (mechanism — logprob extraction, structural filtering, EMA smoothing).*
+*Insight documented April 2026. Lineage: Ken Otwell (theory — residual as certainty-modulated reality signal), Oz (mechanism — logprob extraction, structural filtering, EMA smoothing).*
 
 The LLM's token-level entropy is the one cognitive signal it doesn't have to simulate — it's genuinely experiencing uncertainty when the probability distribution flattens. This module captures that signal and feeds it back into the NPC's harmonic buffer as cognitive proprioception.
 
@@ -699,7 +699,7 @@ Implementation: `progeny/src/uncertainty.py`, `HarmonicBuffer._certainty` + `set
 
 ### Arc Emotional Compression (MOD/MAX Tier Storage)
 
-*Documented 2026-04-05. Lineage: Ken Ong (delta storage, arc compression), Oz (tier design, aging schedule).*
+*Documented 2026-04-05. Lineage: Ken Otwell (delta storage, arc compression), Oz (tier design, aging schedule).*
 
 Arc summaries at MOD tier store emotional trajectory snapshots alongside the delta vector, enabling arc-shape matching — retrieval that finds memories with similar *experiential trajectories*, not just similar topics or endpoints.
 
@@ -732,7 +732,7 @@ Arc summaries at MOD tier store emotional trajectory snapshots alongside the del
 
 ### Pathological Attractor Validation — The Joel Miller Case Study
 
-*Insight documented April 2026. Lineage: Ken Ong (architecture mapping), Gemini (case analysis). Source: MindNotFormal.odt.*
+*Insight documented April 2026. Lineage: Ken Otwell (architecture mapping), Gemini (case analysis). Source: MindNotFormal.odt.*
 
 The character arc of Joel Miller in HBO's *The Last of Us* provides a precise cinematic validation of UMA's pathological attractor dynamics (KO48 Section 8). His internal mechanics map exactly to the harmonic buffer architecture:
 
@@ -752,7 +752,7 @@ The character arc of Joel Miller in HBO's *The Last of Us* provides a precise ci
 
 ### Unified Gate-Adaptation Law & Personality Vector Space
 
-*Documented April 2026. Lineage: Ken Ong (theory, personality-as-vector-space), Kato/Copilot (three-law formalization, operator-layer analysis).*
+*Documented April 2026. Lineage: Ken Otwell (theory, personality-as-vector-space), Kato/Copilot (three-law formalization, operator-layer analysis).*
 
 The snap threshold — the exit gate that determines when deliberation collapses into action — is the single most important control surface in the architecture. It is not a fixed constant (`DEFAULT_SNAP_THRESHOLD = 0.3`). **A mind is the history of its exit-gate adaptations.**
 
@@ -844,6 +844,16 @@ bases = {k: data[k] for k in data['_emotion_names'][:8]}  # 8 unit vectors, each
 * **Raw points** — Every event, always stored, never deleted, never modified. Immutable log. Source of truth.
 * **Arc summaries** — Condensed descriptions of emotional arcs. Stored as MOD-tier index entries. Used ONLY as search aids to find relevant raw points. Like a library card catalog — you search the catalog to find the book, then read the book (raw data).
 
+### In-Context Recency Tiers vs. Durable Vector Tiers
+*Documented 2026-06-24. Lineage: Ken Otwell (two-ladder clarification, full-content keyword retention), Oz (implementation).*
+
+Two distinct "tier" ladders are easy to conflate:
+
+* **In-context recency window** (`TieredMemory` on each `AgentBuffer`, `memory_compressor.py`): `verbatim` (full text, ~8) → `compressed` (extractive one-liners, ~10) → `keywords` (pipe-delimited text *tags*, ~10) → evict. Text only, **no vectors**, recency-ordered (oldest-out), persists across turns, and is re-rendered into the Layer-2 block every turn (Tier 0 sees all three sub-tiers; Tier 1 the last few verbatim; Tier 2/3 drop it). This is the cheap, always-on continuity thread — no Qdrant round-trip, no one-tick delay.
+* **Durable associative store** (Qdrant `skyrim_npc_memories`): `RAW` → `MOD` (arc summaries) → `MAX` (essences), each `{semantic 384d, emotional 9d}`. Vector-bearing, salience-gated (snap-triggered arcs; `age − salience` compaction), retrieved on cue. Full text is written here at ingestion, independently of the in-context ladder — so a memory can be a degraded one-liner in working context yet still fully recoverable from Qdrant.
+
+The keyword tier distills from the one-liner, not the original, so it cannot recover anything the one-liner already dropped. The lossy step is `verbatim → compressed` (first sentence + ~80-char truncation). To stop salient cross-sentence tokens from being lost before the keyword tier ever sees them, `compress_entry` runs the keyword interpretation (`_extract_tags`) over the **full original content** and appends the salient entities/emotions/actions not already present in the first-sentence line. So "Meet me in Whiterun" in a second sentence survives into tier 2 (and thence tier 3) instead of vanishing at truncation. Single-sentence entries yield an empty residual, so the one-liner is unchanged.
+
 ### Storage Trigger
 
 ```
@@ -876,7 +886,7 @@ Oldest + least-salient RAW points get promoted to MOD (arc summary generated if 
 
 ### Episodic Memory Store/Retrieve Cycle — The Reminding Protocol
 
-*Documented 2026-04-05. Lineage: Ken Ong (delta storage, anti-recursion design), Oz (cycle architecture, filter strategy).*
+*Documented 2026-04-05. Lineage: Ken Otwell (delta storage, anti-recursion design), Oz (cycle architecture, filter strategy).*
 
 A single, non-recursive cycle that stores episodic memories and retrieves involuntary associations ("remindings") without feedback loops. One Qdrant write, one Qdrant search, one-tick delay between retrieval and influence.
 
@@ -1256,7 +1266,7 @@ The game engine never blocks. The LLM's 3-6 second OODA loop plays out across PO
 
 ### Pipelined Prompt Construction
 
-*Insight documented March 2026. Lineage: Ken Ong (architecture), Oz/Warp (mechanism).*
+*Insight documented March 2026. Lineage: Ken Otwell (architecture), Oz/Warp (mechanism).*
 
 **The problem with sequential processing:**
 In a naïve implementation, Progeny processes each turn as a serial chain: receive events → build prompt (embed, project, retrieve, format) → run LLM → parse response → ship to Falcon. Prompt construction takes 1-2 seconds (embedding, Qdrant retrieval, memory bundling, JSON assembly). LLM generation takes 3-6 seconds. Total per-turn latency: 4-8 seconds. During generation, Progeny does nothing — 8 Zen 5 cores idle while the LLM grinds tokens.
@@ -1806,7 +1816,7 @@ many-mind-kernel/
 
 ## dLLM Migration Plan — Cognitive Substrate Evolution
 
-*Documented 2026-04-04. Lineage: Ken Ong (theory, configuration space, weak entanglement, moral curriculum), Kato (recurrence analysis, relational diffusion formalism, MoE architecture, fixed-point distillation), Oz (dLLM ecosystem analysis, MMK-to-formalism mapping, denoising trajectory instrumentation, moral fable dynamics).*
+*Documented 2026-04-04. Lineage: Ken Otwell (theory, configuration space, weak entanglement, moral curriculum), Kato (recurrence analysis, relational diffusion formalism, MoE architecture, fixed-point distillation), Oz (dLLM ecosystem analysis, MMK-to-formalism mapping, denoising trajectory instrumentation, moral fable dynamics).*
 
 The autoregressive LLM in Progeny is the least emergence-compatible component in the architecture. It generates text sequentially (control), not through iterative parallel refinement (emergence). Diffusion Language Models (dLLMs) align structurally with the MMK's cognitive principles: they apply the same nonlinear operator repeatedly, creating dynamical systems with fixed points, attractors, and contraction regions. The denoising trajectory IS gradient navigation through a learned energy landscape. See AGI_REQUIREMENTS.md DP-8, DP-9, TR-8, TR-9, TR-10 for full theoretical foundations.
 
@@ -1863,7 +1873,7 @@ The model doesn't just produce text — it traverses the arc of understanding it
 
 **Goal:** Full relational, phase-aware generative architecture operating in configuration space.
 
-**Core concept — Weak Entanglement (Ken Ong):** When the dynamics of elements cannot be modeled independently because their trajectories overlap in a non-linear constraint manifold. They don't share state, but their possible futures interfere because they cohabit a shared constraint surface. This is the missing inductive bias in current generative models.
+**Core concept — Weak Entanglement (Ken Otwell):** When the dynamics of elements cannot be modeled independently because their trajectories overlap in a non-linear constraint manifold. They don't share state, but their possible futures interfere because they cohabit a shared constraint surface. This is the missing inductive bias in current generative models.
 
 **Formal structure:**
 * State: `q_t = (X_t, g_t)` where X_t = N active NPCs, g_t = scene-level harmonic state
@@ -2449,6 +2459,31 @@ stt_endpoint: str = "http://127.0.0.1:9876"  # Service URL
 
 Per-NPC voice overrides stored in NPC profile data (Qdrant `skyrim_agent_state` or config).
 
+## Social Bootstrapping (Phase 6)
+*Documented 2026-06-24. Lineage: Ken Otwell (acquaintance-as-justified-belief, reciprocal hearsay, valence-conditioned approach), Oz (implementation, hysteresis + dissonance wiring).*
+
+NPCs start as strangers and become acquaintances the way people do: they notice an unfamiliar face, feel wary or curious depending on who the stranger resembles, may introduce themselves, and thereafter remember each other. None of it is scripted — an introduction is a *trigger*, not a routine. Everything reaches the prompt only as affect (harmonic nudges) and recalled content; the engine-facing dials (Assistance/Confidence/Aggression) emerge from the felt state, never an injected instruction. The whole arc is built on the goal-resonance machinery (priming-as-affect-plus-recall, the defeasible candidate→committed→satisfied lifecycle, dissonance) rather than a parallel system.
+
+### Identity kernel (6a)
+On first sight, the NPC's seed profile (`skyrim_npc_profiles`) is parsed into an `IdentityKernel` cached per agent (sibling to the harmonic/fact/goal singletons), partitioned into **public** (name, occupation, origin, demeanor — the disclosure surface) and **private** (true desires, secrets) halves. The agent's own Tier-0/1 block carries its self-concept; the public half is what may propagate to others in 6e. Occupation/tags are also the *class signal* that sharpens the 6c percept query.
+
+### Acquaintance as justified belief (6b)
+"A knows B" = A holds at least one provenance-bearing belief about B (firsthand, hearsay, or reputation-lore) — a retrieval/fact check, not a flag. Strangerness is its negation: on presence-change an existing agent regards a newcomer as a stranger when recognition retrieval surfaced nothing AND no belief/reputation exists. Asymmetric by construction (a commoner "knows of" Ulfric; Ulfric knows nothing of the commoner). A process-lifetime stranger ledger carries this signal forward to 6c/6d.
+
+### Valence-conditioned approach (6c)
+One percept-cued retrieval (not a separate class probe): the perceived person on the semantic axis (sharpened by occupation/tags) plus the agent's affect on the emotional axis (emotion-first). Bad history with *soldiers* generalizes to a brand-new soldier with zero shared history — no taxonomy, just semantic+emotional resonance. A warmth-vs-wariness **valence** is read from the recalled memories' emotional keys using the documented split (positive = love+excitement+joy+safety, negative = fear+anger+disgust+sadness). Specific memories of *this* individual override the class prior as a **blend with hysteresis** (referent precedence): one kind encounter does not erase a wary prior; the individual emerges from the class shadow as evidence accumulates. Warmth promotes the get-acquainted nudge; wariness suppresses it (the NPC "doesn't dare ask the soldier a question"); the Confidence modulator damps the wary fear-component per personality, for free.
+
+### The get-acquainted goal + prior-vs-individual dissonance (6d)
+A seed social goal on the Phase 1-2 lifecycle: a co-present stranger raises it (valence-gated — warmth promotes, wariness suppresses below candidacy), sustained co-presence commits it, and it is satisfied once no co-present strangers remain. When the class prior and the individual's own memories disagree, that gap is fed into the dissonance term as an explicit salience signal — an expectation-violating person becomes the most cognitively interesting one in the room.
+
+### Reciprocal disclosure → hearsay propagation (6e)
+When an NPC speaks to someone it has not met, the exchange closes the loop — **and it leaves a memory in both minds**. The listener gains a provenance-bearing **hearsay memory** about the speaker ("X introduced themselves — a blacksmith from Riften"; referent = X; how-it-was-learned recorded). The speaker gains a complementary **telling memory** ("I introduced myself to Y; now Y knows who I am"; referent = Y). That second memory is the meta-belief that lets an NPC answer *"How do you know Y knows that? — I told them yesterday,"* and it is why **both** parties recognize each other on the next meeting, not just the listener. A thin symbolic identity fact (known by both) makes `are_acquainted` true; the stranger flag clears both ways; the get-acquainted goal goes satisfied. Deterministic IDs — hearsay on (subject, claim, source), telling on (speaker, listener, claim) — make retellings reinforce rather than duplicate. On the next encounter, recognition retrieval re-pages each party's memories of the other, `are_acquainted` is true in both directions, and the introduction no longer resonates.
+
+### Deferred
+6f (affect annealing: class-priors strengthen/decay, individual overrides consolidate) layers on the goal-resonance Phase 4/5 habit-annealing and sleep-consolidation machinery, so it lands after those. 6g is cross-arc integration tests + telemetry.
+
+Implementation: `identity_kernel.py`, `acquaintance.py`, `valence.py`, `social_goals.py`, `disclosure.py`, wired in `routes.py`; server-side telemetry logs stranger detection, valence conditioning, goal transitions, and propagation. Nothing in this arc is injected into the prompt as instruction.
+
 ## Open Design Questions
 
 * **Threshold tuning** — What delta magnitude = "significant" emotional shift? Likely needs per-agent calibration based on harmonic buffer decay rates.
@@ -2459,7 +2494,7 @@ Per-NPC voice overrides stored in NPC profile data (Qdrant `skyrim_agent_state` 
 
 ## D-RoPE: Dynamic Rotary Position Embeddings (KO46)
 
-*Paper: `KO46_DYNAMIC_ROPE_TEMPORAL_FOCUS.md`. Developed by Ken Ong with Kato/Copilot, March 2026.*
+*Paper: `KO46_DYNAMIC_ROPE_TEMPORAL_FOCUS.md`. Developed by Ken Otwell with Kato/Copilot, March 2026.*
 
 ### Core Principle
 
@@ -2605,5 +2640,41 @@ LoRA fine-tune on small Qwen GGUF with Phase 3 active. O(N) position-content dis
 
 ---
 
-*D-RoPE integration documented March 2026. Lineage: Ken Ong with Kato/Copilot (theory, KO46) + Oz/Warp (llama.cpp implementation architecture, KV cache analysis).*
+*D-RoPE integration documented March 2026. Lineage: Ken Otwell with Kato/Copilot (theory, KO46) + Oz/Warp (llama.cpp implementation architecture, KV cache analysis).*
 *Cross-references: KO46 (full theory), KO14 (Temporal Encoding), Curvature, Snap, and Delay Buffers (harmonic buffer connection), llm_client.py (backend integration)*
+
+---
+
+## Sleep-Time Memory Reconsolidation
+
+An offline pass, triggered at a `goodnight` session boundary, that revisits an agent's old durable memories through its **current, matured mind** and re-encodes how they landed. It is the stored-memory analog of cross-buffer decoherence `d(F, S)` (ATTRACTOR_FLOW_DYNAMICS.md §1): dissonance is prediction error, and a night of sleep is a bounded gradient-descent step that reduces it across the memory store. Replaying a memory and re-keying it is "replay pumps the buffer" (SPIRAL_DIFFUSION_DESIGN.md §5.2) lifted from the live buffers to the persistent substrate.
+
+The goal is practical, not cosmetic: every memory exists to inform a current problem or dissonance, so recall should surface the **latest version of how the agent understands (or solved) that kind of situation**, fetching the original only when the agent actively digs for context.
+
+### Objective Facts Immutable, Subjective Key Re-encoded
+
+The dual-vector store already separates the axes: a RAW memory's `semantic` vector is *what happened* (objective, immutable) and its `emotional` vector is the NPC's *reaction* — `get_deviation()` = fast − slow, the "second-thought" key. Reconsolidation never mutates RAW. It writes a NEW derived point in a `RECON` tier whose `semantic` is the **original content embedding, copied unchanged** (facts anchored), whose `emotional` is the **re-encoded reaction** (how the matured mind feels now), and whose text is a **condensed reframed gist**. The original is always recoverable.
+
+### Two Phases on `goodnight`
+
+* **REM — latent dissonance probe (cheap, no LLM).** Scan the agent's immutable RAW (bounded, oldest-first) and rank each by per-memory dissonance, selecting the top-K. Default (content-anchored): `predicted = normalize(project(content) − slow_now)`; `dissonance = 1 − cos(stored_key, predicted)`. The prediction drifts as the slow buffer matures, so reactions that no longer fit the current self rise to the top. A simpler `d(F, S)` variant (`1 − cos(stored_key, slow_now)`) is also available. Agent-level invariants (`slow_now`) are computed once and `project` is vectorized across the batch.
+* **SWS — replay + distill (expensive, top-K only).** For each selected source, re-encode the key toward `predicted` (drift-clamped), reinterpret the gist via the LLM (heuristic fallback), and write the RECON point. Bounded cost per night.
+
+### Recall Prefers RECON; RAW Stays Lazy
+
+Retrieval's arc-expansion (`memory_retrieval._expand_to_bundle`) gained a RECON branch: a surfaced RECON adds its gist to `summaries[]` and routes its source RAW ids into `expandable_refs[]` (fetched only on deep recall), and it **suppresses** the source RAW (and any MOD fully covered by it) so recall shows the latest reinterpretation, not the stale original. This also lands the long-noted retrieval dedup/`must_not` hook, scoped to reconsolidation.
+
+### Drift Control + Recurrence Block
+
+Reconsolidation must not run away or loop. The re-encoded key is **blended toward, not replaced by**, the prediction, with a per-pass drift cap; reconsolidation is threshold-gated with a hysteresis margin; K per night is bounded. A source already resolved by a prior pass is only revisited if the mind has since drifted (re-gated against the prior RECON key, not the immutable RAW), so a stable mind produces no churn. **Recurrence block:** if a pass cannot bring residual dissonance below threshold, the RECON is flagged `recon_stalled` and that source is skipped on later nights and surfaced in telemetry — a stall means the reinterpretation failed to resolve it (investigate), not an invitation to re-synthesize forever.
+
+### Provenance, Supersession, and Emergent Outcome
+
+Each RECON carries provenance — `raw_point_ids` back-pointers, the producing slow-buffer snapshot, `game_ts`, `version`, `dissonance_at_pass`, `residual_dissonance`, `recon_attempts` — and is **defeasible**: a later, more-mature pass writes a higher `version` that `supersedes` the prior (JTMS chain, as in reciprocal disclosure). The mechanism is valence-agnostic and per-agent: the same loop **heals** trauma when accumulated counter-evidence softens a once-painful reaction, or **entrenches** it when the reaction is re-confirmed (cf. pathological attractors, ATTRACTOR_FLOW_DYNAMICS.md §4). Nothing hardcodes "always heal" — the outcome emerges from each mind's own maturation.
+
+### Wiring
+
+A `goodnight` event (a defined `SESSION_TYPE`) is detected in `routes._ingest_inner` before the turn branch; `_run_sleep_reconsolidation()` reads the live slow buffers (`HarmonicState.get_slow`) as the matured baseline and runs the pass over all known agents, returning an Ack (no turn response). It is kept independent of operational age−salience compaction (a storage axis) — reconsolidation is a cognitive axis. Code: `progeny/src/memory_reconsolidation.py` (probe, drift/recurrence helpers, `run_reconsolidation`), `MemoryWriter.write_reconsolidated_summary` (`CompressionTier.RECON`), `memory_retrieval._expand_to_bundle` (recall preference), `routes._run_sleep_reconsolidation` (trigger).
+
+*Sleep-Time Memory Reconsolidation documented June 2026. Lineage: Ken Otwell (design direction, predictive-coding/dissonance framing, recurrence-block + compute-once caveats) with Oz/Warp (implementation).*
+*Cross-references: ATTRACTOR_FLOW_DYNAMICS.md §1+§4 (dissonance as prediction error, pathological attractors), SPIRAL_DIFFUSION_DESIGN.md §5.2 (replay pumps the buffer), Memory Architecture (RAW/MOD/MAX tiers), Goal Resonance plan Phase 5 (sleep replay-and-distill).*

@@ -1,0 +1,571 @@
+﻿# Path / endpoint / audio-related strings from AIAgent.dll
+# Filtered from 8360 unique strings -> 566 matches
+# Pattern: (?i)(\.wav|\.fuz|\.lip|\.bsa|\.esp|\.esm|\.pex|\.json|\.ini|\.dds|\.nif|\.php|\.html|\.css|\.js|http|https|sound[\\/]|voice[\\/]|aiagent|setconf|setvoice|getvoice|playsound|playvoice|playaudio|stt\.|vsx\.|comm\.|stream|herika|chim|openmic|tts|asr|whisper|recordsound|sendallvoices)
+# Extracted: 2026-06-09 15:17:23
+
+ HTTP/1.1
+ HTTPUploader::getInstance()
+- Plugin: HerikaAI-NG
+#HERIKA_NPC1#
+.?AV?$_Func_impl_no_alloc@V<lambda_1>@?1??stream@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVActor@RE@@H@Z@X$$V@std@@
+.?AV?$_Func_impl_no_alloc@V<lambda_1>@?2??log@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z@X$$V@std@@
+.?AV?$_Func_impl_no_alloc@V<lambda_1>@?2??log@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z@X$$V@std@@
+.?AV?$_Func_impl_no_alloc@V<lambda_1>@?2??postGameData@HTTPManager@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$basic_json@Vmap@std@@Vvector@2@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@2@_N_J_KNVallocator@2@Uadl_serializer@json_abi_v3_11_2@nlohmann@@V?$vector@EV?$allocator@E@std@@@2@@json_abi_v3_11_2@nlohmann@@@Z@X$$V@std@@
+.?AV?$_Func_impl_no_alloc@V<lambda_1>@?KD@??stream@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z@X$$V@std@@
+.?AV?$_Func_impl_no_alloc@V<lambda_1>@?N@??log@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVActor@RE@@@Z@X$$V@std@@
+.?AV?$_Func_impl_no_alloc@V<lambda_2>@?KF@??stream@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z@X$$V@std@@
+.?AV?$_Ref_count_obj2@VAIAgent@@@std@@
+.?AV?$basic_ifstream@DU?$char_traits@D@std@@@std@@
+.?AV?$basic_iostream@DU?$char_traits@D@std@@@std@@
+.?AV?$basic_istream@_WU?$char_traits@_W@std@@@std@@
+.?AV?$basic_istream@DU?$char_traits@D@std@@@std@@
+.?AV?$basic_istringstream@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@
+.?AV?$basic_istringstream@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@
+.?AV?$basic_ofstream@DU?$char_traits@D@std@@@std@@
+.?AV?$basic_ostream@DU?$char_traits@D@std@@@std@@
+.?AV?$basic_ostringstream@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@
+.?AV?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@
+.?AV?$basic_streambuf@DU?$char_traits@D@std@@@std@@
+.?AV?$basic_stringstream@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@
+.?AV<lambda_1>@?1??stream@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVActor@RE@@H@Z@
+.?AV<lambda_1>@?2??log@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z@
+.?AV<lambda_1>@?2??log@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z@
+.?AV<lambda_1>@?2??postGameData@HTTPManager@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$basic_json@Vmap@std@@Vvector@2@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@2@_N_J_KNVallocator@2@Uadl_serializer@json_abi_v3_11_2@nlohmann@@V?$vector@EV?$allocator@E@std@@@2@@json_abi_v3_11_2@nlohmann@@@Z@
+.?AV<lambda_1>@?KD@??stream@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z@
+.?AV<lambda_1>@?N@??log@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVActor@RE@@@Z@
+.?AV<lambda_2>@?KF@??stream@HTTPManager@@YAXV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z@
+.?AVBSResourceNiBinaryStream@RE@@
+.?AVNiBinaryStream@RE@@
+.fuz
+.wav
+/HerikaServer
+/HerikaServer/comm.php
+/HerikaServer/ui/api/chim_diaries.php?entry=
+/HerikaServer/ui/api/chim_diaries.php?list=people
+/HerikaServer/ui/api/chim_diaries.php?person=
+/HerikaServer/ui/control_panel.php
+/HerikaServer/ui/home.php
+??0?$basic_iostream@DU?$char_traits@D@std@@@std@@QEAA@PEAV?$basic_streambuf@DU?$char_traits@D@std@@@1@@Z
+??0?$basic_istream@_WU?$char_traits@_W@std@@@std@@QEAA@PEAV?$basic_streambuf@_WU?$char_traits@_W@std@@@1@_N@Z
+??0?$basic_istream@DU?$char_traits@D@std@@@std@@QEAA@PEAV?$basic_streambuf@DU?$char_traits@D@std@@@1@_N@Z
+??0?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAA@PEAV?$basic_streambuf@DU?$char_traits@D@std@@@1@_N@Z
+??0?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@IEAA@XZ
+??0?$basic_streambuf@DU?$char_traits@D@std@@@std@@IEAA@XZ
+??1?$basic_iostream@DU?$char_traits@D@std@@@std@@UEAA@XZ
+??1?$basic_istream@_WU?$char_traits@_W@std@@@std@@UEAA@XZ
+??1?$basic_istream@DU?$char_traits@D@std@@@std@@UEAA@XZ
+??1?$basic_ostream@DU?$char_traits@D@std@@@std@@UEAA@XZ
+??1?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@UEAA@XZ
+??1?$basic_streambuf@DU?$char_traits@D@std@@@std@@UEAA@XZ
+??5?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@AEA_K@Z
+??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@_J@Z
+??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@_K@Z
+??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@H@Z
+??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@I@Z
+??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@P6AAEAV01@AEAV01@@Z@Z
+??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@P6AAEAVios_base@1@AEAV21@@Z@Z
+??6?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV01@PEAV?$basic_streambuf@DU?$char_traits@D@std@@@1@@Z
+?_Gninc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@IEAAPEADXZ
+?_Init@?$basic_streambuf@DU?$char_traits@D@std@@@std@@IEAAXPEAPEAD0PEAH001@Z
+?_Init@?$basic_streambuf@DU?$char_traits@D@std@@@std@@IEAAXXZ
+?_Ipfx@?$basic_istream@_WU?$char_traits@_W@std@@@std@@QEAA_N_N@Z
+?_Ipfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAA_N_N@Z
+?_Lock@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@UEAAXXZ
+?_Lock@?$basic_streambuf@DU?$char_traits@D@std@@@std@@UEAAXXZ
+?_Osfx@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAXXZ
+?_Pninc@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@IEAAPEA_WXZ
+?_Pninc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@IEAAPEADXZ
+?_Unlock@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@UEAAXXZ
+?_Unlock@?$basic_streambuf@DU?$char_traits@D@std@@@std@@UEAAXXZ
+?cout@std@@3V?$basic_ostream@DU?$char_traits@D@std@@@1@A
+?flush@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@XZ
+?getloc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEBA?AVlocale@2@XZ
+?ignore@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@_JH@Z
+?imbue@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAAXAEBVlocale@2@@Z
+?imbue@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAXAEBVlocale@2@@Z
+?put@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@D@Z
+?read@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@PEAD_J@Z
+?sbumpc@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@QEAAGXZ
+?sbumpc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAAHXZ
+?seekg@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@_JH@Z
+?seekp@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@V?$fpos@U_Mbstatet@@@2@@Z
+?setbuf@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAAPEAV12@PEA_W_J@Z
+?setbuf@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAPEAV12@PEAD_J@Z
+?sgetc@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@QEAAGXZ
+?sgetc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAAHXZ
+?showmanyc@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAA_JXZ
+?showmanyc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAA_JXZ
+?snextc@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@QEAAGXZ
+?snextc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAAHXZ
+?sputc@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAAHD@Z
+?sputn@?$basic_streambuf@DU?$char_traits@D@std@@@std@@QEAA_JPEBD_J@Z
+?sync@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAAHXZ
+?sync@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAHXZ
+?tellg@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAA?AV?$fpos@U_Mbstatet@@@2@XZ
+?uflow@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAAGXZ
+?uflow@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAHXZ
+?write@?$basic_ostream@DU?$char_traits@D@std@@@std@@QEAAAEAV12@PEBD_J@Z
+?xsgetn@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAA_JPEA_W_J@Z
+?xsgetn@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAA_JPEAD_J@Z
+?xsputn@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAA_JPEB_W_J@Z
+?xsputn@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAA_JPEBD_J@Z
+@#HERIKA_NPC1# could not find any place to sit
+@#HERIKA_NPC1# could not find any place to sleep
+@#HERIKA_NPC1# sits at 
+@#HERIKA_NPC1# sleeps at 
+@#HERIKA_NPC1# starts traveling to 
+@#HERIKA_NPC1#@
+@take a seat error, #HERIKA_NPC1# is currently using 
+[AIFF] Using server: http://{}:{}
+[CHIM]
+[CHIM] {}
+[CHIM] {} gives {} {} to {}
+[CHIM] {} gives {} gold to {}
+[CHIM] {} marked for Background Life (BgL).
+[CHIM] {} trade items with {}
+[CHIM] Actor {} busy : {}
+[CHIM] Caught SEH Exception in task (Prevented CTD). Check logs.
+[CHIM] Model changed to {} for {} 
+[CHIM] Open mic monitoring started
+[CHIM] Open mic monitoring stopped
+[CHIM] Open mic muted
+[CHIM] Open mic unmuted
+[CHIM] Recording end
+[CHIM] recording....
+[CHIM] Target not found 
+[CHIM] Using server: http://{}:{}
+[COSAVE] Size of  CHIM-marked NPCs {}.
+[COSAVE] Storing as CHIM-marked NPC {}.
+[COSAVE] Storing as CHIM-marked NPC {}. {}
+[HTTPManager] Actor is null for msg: {}
+[HTTPManager] Cancelled server side {}, taskid {}
+[HTTPManager] Error in log thread: {}
+[HTTPManager] Failed to queue log task: {}
+[HTTPManager] Failed to queue postGameData task: {}
+[HTTPMANAGER] Response ready, actor {}, queue {}, taskid {} 
+[HTTPStream] Setting dialogue busy for actor: {}, isPlayerTeammate: {}, resolved listener: {}
+[HTTPStream] Streaming for actor: {} (rechat depth: {})
+[HTTPUploader] Error in log thread: {}
+[PrismaUIBridge] CHIM Logs View hotkey pressed - opening browser to control panel
+[PrismaUIBridge] CHIM Logs View opened - press hotkey again to close
+[PrismaUIBridge] Creating CHIM AI View panel from CHIM/aiview.html...
+[PrismaUIBridge] Creating CHIM browser panel from CHIM/browser.html...
+[PrismaUIBridge] Creating CHIM chatbox panel from CHIM/chatbox.html...
+[PrismaUIBridge] Creating CHIM debugger panel from CHIM/debugger.html...
+[PrismaUIBridge] Creating CHIM diaries panel from CHIM/diaries.html...
+[PrismaUIBridge] Creating CHIM master menu from CHIM/master_menu.html...
+[PrismaUIBridge] Creating CHIM overlay panel from CHIM/overlay.html...
+[PrismaUIBridge] Creating CHIM settings menu from CHIM/settings_menu.html...
+[PrismaUIBridge] Creating CHIM status HUD panel from CHIM/status_hud.html...
+[PrismaUIBridge] Creating conversation history panel from CHIM/history.html...
+[PrismaUIBridge] Fetching AI View from: http://{}:{}/{}
+[PrismaUIBridge] Fetching debugger from: http://{}:{}/{}
+[PrismaUIBridge] Fetching from: http://{}:{}/{}
+[PrismaUIBridge] Fetching overlay from: http://{}:{}/{}
+[PrismaUIBridge] Showing browser panel with control panel (CHIM Logs View)
+[PrismaUIBridge] View is not valid! HTML file may not exist at Data/PrismaUI/views/CHIM/history.html
+[RECHAT] Rechat avoid because another stream is active HTTPStream 
+[RECHAT] Rechat avoid because another stream is active HTTPStreamRechat
+[RECORDSOUND] Cancelling all ongoing HTTP stream messages before sendMessage
+[sendMsg] HTTP request is empty
+[SpeakManager] Failed to open WinHTTP session. Error: {}
+[STATS_FUNCTION_ENTRY] RefreshAIAgentFurniture called for: {}
+[STATS_FUNCTION_ENTRY] RefreshAIAgentStats called for: {}
+[TESCellAttachDetachEvent] AIAgentRoleMasterFaction NPC loaded {:#x} {}
+[VOICE_CSV] CHIM directory does not exist: {}
+[VOICE_CSV] No voice CSV files found in CHIM directory
+__cdecl REL::IDDatabase::istream_t::istream_t(class std::basic_string_view<wchar_t,struct std::char_traits<wchar_t> >,int)
+_get_stream_buffer_pointers
+_openmicH
+About to call AIAgentScriptProxy
+AIAgent
+AIAgent.dll
+AIAgent.esp
+AIAgent.esp present
+AIAgent.esp\femalecommoner\femalecommoner.wav
+AIAgent.esp\maleuniquedbspectrallachance\maleuniquedbspectrallachance.wav
+AIAgent.esp\maleuniqueemperor\maleuniqueemperor.wav
+AIAgent.esp\maleuniquehermaeusmora\maleuniquehermaeusmora.wav
+AIAgent.esp\maleuniquesheogorath\maleuniquesheogorath.wav
+AIAgent.ini
+AIAgent.ini file not present or invalid
+aiagent_rolemastered_faction
+AIAgentAIMind
+AIAgentFollowFaction could not be loaded
+AIAgentFunctions
+AIAgentRoleMasterFaction could not be loaded
+AIAgentRoleMasterFaction NPC loaded {:#x} {}
+AIAgentScriptProxy
+AIAgentSoulGazeEffect
+auto __cdecl AIAgentManager::getAgentByName::<lambda_2>::operator ()(const class std::shared_ptr<class AIAgent> &) const
+auto __cdecl HTTPManager::log::<lambda_1>::operator ()(void) const
+auto __cdecl HTTPManager::postGameData::<lambda_1>::operator ()(void) const
+auto __cdecl SpeakManager::rechat::<lambda_2>::operator ()(const class std::shared_ptr<class AIAgent> &,float,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &) const
+Auto-discovery failed: Cannot connect to CHIM.exe proxy on localhost:7135
+book.php?title=
+bool __cdecl AIAgent::isAvailableforDialog(bool)
+bool __cdecl REL::IDDatabase::unpack_file(class REL::IDDatabase::istream_t &,class REL::IDDatabase::header_t,bool)
+bool __cdecl SpeakManager::rechat::<lambda_1>::operator ()(const class std::shared_ptr<class AIAgent> &) const
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\include\RE/B/BSExtraData.h
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\include\RE/B/BSTList.h
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\include\RE/I/InventoryEntryData.h
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\include\RE/T/TESSpellList.h
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\src\RE\P\PackUnpack.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\src\SKSE\API.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\src\SKSE\Interfaces.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\src\SKSE\Logger.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\Herika Server\HerikaAI-NG\build\release\vcpkg_installed\vcpkg\blds\commonlibsse-ng\src\6f0d4a2f18-2e47e7a9cb.clean\src\SKSE\Trampoline.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\AudioManager.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\RE/B/BSIntrusiveRefCounted.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\RE/B/BSTArray.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\RE/B/BSTHashMap.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\RE/B/BSTList.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\RE/I/IFunctionArguments.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\REL/Relocation.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\SKSE/Trampoline.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\SkyrimScripting/Plugin/Logger.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\build\release\vcpkg_installed\x64-windows-static-md\include\SkyrimScripting/Plugin/SKSEPlugin.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\Commands.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\Conf.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\Globals.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\HerikaEyes.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\HTTPManager.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\HTTPUploader.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\md5.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\Misc.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\Misc.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\Papyrus.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\Plugin.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\PrismaUIBridge.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\ScriptProxy.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\SpeakManager.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\SpeakManager.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\SPGResponse.cpp
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\ThreadPool.h
+C:\Users\reece\Desktop\Dwemer Dynamics\MonoRepo\HerikaAI-NG\Voicerec.cpp
+Cancelling all ongoing HTTP stream messages , game reloading
+Cancelling all ongoing HTTP stream messages before sendMessage
+Cancelling all ongoing HTTP stream messages before voice recording
+Cannot connect to server. Review AIAgent.ini
+CHIM - Skyrim Plugin - Init Done
+CHIM - Skyrim Plugin - Version {}
+CHIM AIagent, image downloader
+CHIM Chatbox initialized. System information:
+CHIM directory does not exist: {}
+Chim PorH9
+Chim Portal activated by player - no door ref
+Chim Portal activated by player {:#x}
+CHIM/aiview.html
+CHIM/browser.html
+CHIM/chatbox.html
+CHIM/debugger.html
+CHIM/diaries.html
+CHIM/history.html
+CHIM/master_menu.html
+CHIM/overlay.html
+CHIM/settings_menu.html
+CHIM/status_hud.html
+CHIM: Detected anomalous timestamp change! Switching to continuity timestamp mode
+chimAIViewCommand
+chimBrowserCommand
+chimChatboxCommand
+chimDebuggerCommand
+chimDiariesCommand
+chimHistoryCommand
+chimMasterMenuCommand
+chimMasterMenuReady
+chimOverlayCommand
+chimSettingsMenuCommand
+chimSettingsMenuReady
+ChimTeleportDoorActivated
+class RE::Actor *__cdecl AIAgent::getActor(void)
+class RE::Actor *__cdecl AIAgent::getActorByFormId(void)
+class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl AIAgent::getActorName(void)
+class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl HTTPManager::sendMsg(const char *,bool,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl HTTPUploader::UploadBookContent(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl HTTPUploader::UploadCSVFile(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl HTTPUploader::UploadFile(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl HTTPUploader::UploadImage(const char *,int,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl HTTPUploader::UploadImagePng(const char *,int,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl HTTPUploader::UploadVoiceSampleWithText(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+comm.php
+comm.phpH
+Content-Disposition: form-data; name="file"; filename="wavData.wav"
+csv_import.php
+Data/CHIM
+data/textures/AIAgent/Books/
+data/textures/AIAgent/Books/Note01.png
+dawnguard.esm\crdragonvoice\dlc1vqdrag_dlc1vqdragontli_0001328f_1.fuz
+dawnguard.esm\dlc1femaleuniquefura\dlc1rv01_dlc1rv01completet_000150e2_1.fuz
+dawnguard.esm\dlc1femaleuniquevalerica\dlc1vq05_dlc1vq05valericai_0000f84f_4.fuz
+dawnguard.esm\dlc1femalevampire\dlc1dialoguevampire__0001983f_1.fuz
+dawnguard.esm\dlc1ld_femalenorduniquekatria\dlc1ld_ark_dlc1ld_d2_katri_000163fc_1.fuz
+dawnguard.esm\dlc1maleuniquedexion\dlc1dialog_dlc1dialoguehun_0000fd6f_2.fuz
+dawnguard.esm\dlc1maleuniqueflorentius\dlc1dialog_dlc1dialoguehun_0000e7a9_1.fuz
+dawnguard.esm\dlc1maleuniquegaran\dlc1vampir_dlc1vampirebase_00018b65_1.fuz
+dawnguard.esm\dlc1maleuniquegelebor\dlc1vq07_dlc1vq07gelebortl_00015068_2.fuz
+dawnguard.esm\dlc1maleuniquegunmar\dlc1radian_dlc1radianttrol_0001056f_3.fuz
+dawnguard.esm\dlc1maleuniqueharkon\dlc1vq03va_dlc1vq03vampire_000069a8_2.fuz
+dawnguard.esm\dlc1maleuniqueisran\dlc1vq03hunter__000098c7_2.fuz
+dawnguard.esm\dlc1maleuniquejiub\dlc1vqsain_dlc1vqsaintdrem_00014156_1.fuz
+dawnguard.esm\dlc1maleuniquesnowelfghost\dlc1vq07_dlc1vq07prelateca_00014f41_1.fuz
+dawnguard.esm\dlc1maleuniquevyrthur\dlc1vq07__0000d67b_2.fuz
+dawnguard.esm\dlc1malevampire\dlc1vq03va_dlc1vq03vampire_000098c4_2.fuz
+dawnguard.esm\dlc1seranavoice\dlc1vq05_dlc1vq05relations_00014f82_1.fuz
+dawnguard.esm\maleelfhaughty\dlc1rv08_dlc1rv08start3_0000ce01_2.fuz
+dawnguard.esm\maleorc\dlc1vqfvbo_dlc1vqfvbooksbr_0001a3df_2.fuz
+dragonborn.esm\dlc2crgiantvoicekarstaag\dlc2dunkar_dlc2dunkarstaag_00028203_1.fuz
+dragonborn.esm\dlc2femaledarkelfcommoner\dlc2rrfavo_dlc2rrfavor06in_00024fa3_3.fuz
+dragonborn.esm\dlc2femaleuniquefrea\dlc2dialog_dlc2dialogueska_00039211_4.fuz
+dragonborn.esm\dlc2maledarkelfcommoner\dlc2dialog_dlc2drrbeggarss_00034f84_3.fuz
+dragonborn.esm\dlc2maledarkelfcynical\dlc2dunkol_dlc2dunkolbjorn_000275ac_3.fuz
+dragonborn.esm\dlc2maleuniqueadril\dlc2rrarri_dlc2rrarrivalsc_00039254_1.fuz
+dragonborn.esm\dlc2maleuniquelleril\dlc2dialog_dlc2drrmorvaynt_00023fd5_3.fuz
+dragonborn.esm\dlc2maleuniquemiraak\dlc2mq02__0003a140_1.fuz
+dragonborn.esm\dlc2maleuniquemodyn\dlc2dialog_dlc2dgcrimewant_0002c095_1.fuz
+dragonborn.esm\dlc2maleuniqueneloth\dlc2mq04_dlc2mq04nelothnch_00019cb5_1.fuz
+dragonborn.esm\dlc2maleuniquestorn\dlc2mq05_dlc2mq05mq05storn_0001dfb3_1.fuz
+dragonborn.esm\dlc2rieklingvoice\dlc2mh02_dlc2mh02chiefredg_0001fe0f_1.fuz
+dragonborn.esm\maleuniquehermaeusmora\dlc2bookdungeoncontroller__00032164_1.fuz
+Empty server or port from CHIM.exe proxy discovery
+Error using http://{}
+Error using http://{}:{}{}
+Failed to create AI View - check that Data/PrismaUI/views/CHIM/aiview.html exists
+Failed to create browser view - check that Data/PrismaUI/views/CHIM/browser.html exists
+Failed to create chatbox view - check that Data/PrismaUI/views/CHIM/chatbox.html exists
+Failed to create debugger view - check that Data/PrismaUI/views/CHIM/debugger.html exists
+Failed to create diaries view - check that Data/PrismaUI/views/CHIM/diaries.html exists
+Failed to create history view - check that Data/PrismaUI/views/CHIM/history.html exists
+Failed to create HTTP request: {}
+Failed to create master menu view - check that Data/PrismaUI/views/CHIM/master_menu.html exists
+Failed to create overlay view - check that Data/PrismaUI/views/CHIM/overlay.html exists
+Failed to create settings menu view - check that Data/PrismaUI/views/CHIM/settings_menu.html exists
+Failed to create status HUD view - check that Data/PrismaUI/views/CHIM/status_hud.html exists
+Failed to open HTTP request: {}
+Failed to open WinHTTP session: {}
+Failed to receive discovery response from CHIM.exe proxy
+Failed to receive HTTP response: {}
+Failed to receive HTTP response: {} {}
+Failed to send discovery request to CHIM.exe proxy
+Failed to send HTTP request: {}
+Failed to send HTTP request: {} {}
+gamedata.php
+GET /{0}?DATA={1} HTTP/1.1
+GET /{0}?DATA={1}&profile={2} HTTP/1.1
+GET /discover HTTP/1.1
+getActor called on null AIAgent
+getActorName called on null AIAgent
+getHerikaFormId
+godmode.php
+HerikaAASPGDialogueHerika3Branch1Topic
+HTTP Status Code: {}
+HTTP/1.0 200
+HTTP/1.1 200
+http://
+HTTPGameData
+HTTPLog
+HTTPLogWithActor
+HTTPLogWithForcedActor
+HTTPStream
+HTTPStreamGodMode
+HTTPStreamRechat
+HTTPUploader
+int __cdecl HTTPManager::sendMsgStream(const char *,bool,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,int,bool)
+int __cdecl Papyrus::recordSoundEx(class RE::BSScript::Internal::VirtualMachine *,unsigned int,struct RE::StaticFunctionTag *,int)
+int __cdecl Papyrus::setConfReal(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,float,int,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+int __cdecl Papyrus::setOpenMicMuted(class RE::BSScript::Internal::VirtualMachine *,unsigned int,struct RE::StaticFunctionTag *,bool)
+int __cdecl Papyrus::startOpenMicMonitoring(class RE::BSScript::Internal::VirtualMachine *,unsigned int,struct RE::StaticFunctionTag *)
+int __cdecl Papyrus::stopOpenMicMonitoring(class RE::BSScript::Internal::VirtualMachine *,unsigned int,struct RE::StaticFunctionTag *)
+Invalid discovery response format from CHIM.exe proxy: {}
+Invalid HTTP response format from CHIM.exe proxy
+istringstream: no conversion
+itt.php?stuff
+Kishar.esp\_KisharVoice\_KisharDia__KisharDialogue_000F8FAC_1.wav
+mode_whisper
+Neiva_Deep_Water_Follower_1_Form.esp\FemaleNeivaVoice\NeivaDeepW_NeivaDeepWaterF_00000A6E_1.wav
+No import data CSV files found in CHIM directory
+pic.php?stuff
+POST /{} HTTP/1.1
+recordSoundEx
+sendAllVoices
+setConf
+setconf|{}|{}|{}@{:08x}
+setconf|{}|{}|chim_context_mode@1
+setconf|{}|{}|chim_mode@{}
+setconf|{}|{}|chim_profile_model@{}
+setconf|{}|{}|CurrentParty@{}
+setOpenMicMuted
+setTalking called on null AIAgent
+Setting _openmic_enabled to {}
+Setting _openmic_enddelay to {}
+Setting _openmic_sensitivity to {}
+skyrim.esm\crdogvoice\da03_da03barbasmoreinfo0_0001cdaa_3.fuz
+skyrim.esm\crdragonpriestvoice\mg07__00080107_1.fuz
+skyrim.esm\crdraugrvoice\dialoguedraugr__0001695e_1.fuz
+skyrim.esm\crdremoravoice\dunmidden0_middenvelehkwea_00075c75_2.fuz
+skyrim.esm\crhagravenvoice\dunblindcl_dunblindcliffre_00077c23_1.fuz
+skyrim.esm\cruniquealduin\mq206__0007a0da_1.fuz
+skyrim.esm\cruniqueodahviing\mq301_mq301odahviingb2_00048f05_2.fuz
+skyrim.esm\cruniquepaarthurnax\mq301_mq301paarthurnaxcall_000d2cf4_1.fuz
+skyrim.esm\femaleargonian\ms04_ms04avanchnzelinnkeep_00056551_1.fuz
+skyrim.esm\femalechild\dbeviction_dbnazireviction_0006f9a0_1.fuz
+skyrim.esm\femalecommander\cw_cwcampaignfieldcomissio_000221e8_1.fuz
+skyrim.esm\femalecommoner\dialogueso_dialoguesolitud_000c0699_1.fuz
+skyrim.esm\femalecondescending\tg02b_tg02btoniliabranchto_000d33bf_1.fuz
+skyrim.esm\femalecoward\dunsouthfr_dunboulderfallq_0003a6a7_3.fuz
+skyrim.esm\femaledarkelf\da02_da02whosboethiah_0004d8be_3.fuz
+skyrim.esm\femaleelfhaughty\dbeviction_dbnazireviction_0006f99f_1.fuz
+skyrim.esm\femaleeventoned\ms01_ms01margretinfoinvisi_000d6686_2.fuz
+skyrim.esm\femalekhajiit\caravanscene7__00072d27_1.fuz
+skyrim.esm\femalenord\dialogueguardsgeneral__000dd08b_1.fuz
+skyrim.esm\femaleoldgrumpy\dialogueriften__0008bacf_1.fuz
+skyrim.esm\femaleoldkindly\darksidecontractdialogue__0009bd39_1.fuz
+skyrim.esm\femaleorc\dialoguetu_tutorialcombat_000dd63c_1.fuz
+skyrim.esm\femaleshrill\dialoguewi_dialoguewinterh_0006de34_2.fuz
+skyrim.esm\femalesultry\dialogueso_dialoguesolitud_000c069b_2.fuz
+skyrim.esm\femaleuniqueastrid\darkbrotherhood__000fdbe6_1.fuz
+skyrim.esm\femaleuniqueazura\da01_da01azurafinaltopic02_0009377e_1.fuz
+skyrim.esm\femaleuniqueboethiah\da02_da02boethahslayfollow_0005fc7f_3.fuz
+skyrim.esm\femaleuniquedelphine\mq201_mq201delphineintrori_000410d4_1.fuz
+skyrim.esm\femaleuniqueelenwen\mq302__000d94ba_1.fuz
+skyrim.esm\femaleuniqueghost\t02_t02rukimocksplayertopi_00038281_1.fuz
+skyrim.esm\femaleuniquekarliah\tgdialogue_tgdialoguekarli_000d61dd_2.fuz
+skyrim.esm\femaleuniquemaven\ms03_ms03mavenoffertopic_0001da36_1.fuz
+skyrim.esm\femaleuniquemephala\da08__0010ebc3_1.fuz
+skyrim.esm\femaleuniquemeridia\da09_da09meridiadawnbreake_0004e4ca_1.fuz
+skyrim.esm\femaleuniquemirabelleervine\mg06_mg06stage10mirabellee_0002757b_3.fuz
+skyrim.esm\femaleuniquenamira\da11_da11voiceofnamiratopi_00089425_1.fuz
+skyrim.esm\femaleuniquenightmother\dbrecurring__000a030d_1.fuz
+skyrim.esm\femaleuniquenocturnal\tg09__0001a2c8_5.fuz
+skyrim.esm\femaleuniquevaermina\da16miniscenes__000e155d_1.fuz
+skyrim.esm\femaleuniquevex\tgdialoguehqscene09__0003daab_1.fuz
+skyrim.esm\femaleyoungeager\db03__000c027a_3.fuz
+skyrim.esm\maleargonian\dbeviction_dbnazireviction_0006f9a3_1.fuz
+skyrim.esm\malebandit\dunbrokenoarqst__0001d253_1.fuz
+skyrim.esm\malebrute\db07_db07playerphrasetopic_00028e27_2.fuz
+skyrim.esm\malechild\dialogueri_dialogueriftenh_0008bbce_1.fuz
+skyrim.esm\malecommander\cw_cwcampaignfieldcomissio_000221e8_1.fuz
+skyrim.esm\malecommoner\ms03_ms03louismotivationto_00074a4c_1.fuz
+skyrim.esm\malecommoneraccented\tgtq04_tgtq04torstenintrob_0007d672_3.fuz
+skyrim.esm\malecondescending\dialogueda_dialoguedawnsta_00090e03_1.fuz
+skyrim.esm\malecoward\da15_da15queststart_0002bd02_2.fuz
+skyrim.esm\maledarkelf\dialoguefo_hirelingidles_000e1692_1.fuz
+skyrim.esm\maledrunk\mq201party__000c0829_1.fuz
+skyrim.esm\maleeventoned\dbrecurrin_dbrecurringcont_00087b80_1.fuz
+skyrim.esm\maleeventonedaccented\db05_db05goodtimebranchtop_000a7041_1.fuz
+skyrim.esm\maleforsworn\duneldergl_duneldergleamt0_0001fb79_1.fuz
+skyrim.esm\maleguard\dialogueguardsgeneral__000dd08b_1.fuz
+skyrim.esm\malekhajiit\wemaiqthel_wemaiqtheliarhe_000b9df0_1.fuz
+skyrim.esm\malenord\darkbrothe_nightgatehadrin_000da678_3.fuz
+skyrim.esm\malenordcommander\dialogueguardsgeneral__000dd0f5_1.fuz
+skyrim.esm\maleoldgrumpy\darkbrotherhood__0006a3dc_1.fuz
+skyrim.esm\maleoldkindly\dialoguema__000253b1_1.fuz
+skyrim.esm\maleslycynical\ms05_ms05viarmotask2_000534e7_2.fuz
+skyrim.esm\malesoldier\db01misc_db01miscguardgree_000556f5_1.fuz
+skyrim.esm\maleuniqueamaundmotierre\db04_amaundcontractinfobra_0003bce8_1.fuz
+skyrim.esm\maleuniqueancano\mg03_mg03ancanoforcegreetr_00107ab4_1.fuz
+skyrim.esm\maleuniquearngeir\mq00_mqarngeirdragonbornto_00030317_6.fuz
+skyrim.esm\maleuniqueaventusaretino\db01_db01aventusgrelodalre_00051400_4.fuz
+skyrim.esm\maleuniquebrynjolf\tg01_tg01brynjolfduringque_000206a8_1.fuz
+skyrim.esm\maleuniquecicero\darkbrothe_dbcicerostatewa_0009be4a_1.fuz
+skyrim.esm\maleuniqueclavicusvile\da03_da03vilegreet1c_000bd765_1.fuz
+skyrim.esm\maleuniquedbblackdoor\darkbrothe_dbblackdoordawn_00019512_1.fuz
+skyrim.esm\maleuniquedbguardian\darkbrotherhood__00074748_1.fuz
+skyrim.esm\maleuniquedbspectrallachance\darkbrotherhood__000e0c89_1.fuz
+skyrim.esm\maleuniquedelvinmallory\darkbrothe_dbsancmalloryre_00098b68_1.fuz
+skyrim.esm\maleuniqueemperor\db11_db11emperorplayerresp_0004fd52_3.fuz
+skyrim.esm\maleuniqueesbern\mq00__000b0bc0_1.fuz
+skyrim.esm\maleuniquegallus\tg09_tg09galluspilgrimspat_0001a29e_2.fuz
+skyrim.esm\maleuniquegalmar\cw02b__000a2028_1.fuz
+skyrim.esm\maleuniqueghost\dunvalthum_dunvalthumeqsth_0009a7d0_2.fuz
+skyrim.esm\maleuniqueghostsvaknir\ms05_dunde__000e3653_1.fuz
+skyrim.esm\maleuniquehadvar\cwsharedin_cwsharedinfosta_000e724d_1.fuz
+skyrim.esm\maleuniquehircine\da05_da05questingbeastimon_00015c64_1.fuz
+skyrim.esm\maleuniquekodlakwhitemane\c06_c06kodlakseeyalaterbra_000582d7_4.fuz
+skyrim.esm\maleuniquemalacath\da06__000223d5_1.fuz
+skyrim.esm\maleuniquemehrunesdagon\da07_da07dagonvoicebrancht_00097ef1_2.fuz
+skyrim.esm\maleuniquemercerfrey\tg05_tg05mercerkarliahpurs_000b8387_2.fuz
+skyrim.esm\maleuniquemgaugur\mg04_mg04stage40augurthalm_000240b0_3.fuz
+skyrim.esm\maleuniquemolagbal\da10_da10molagbalstatuetop_000ddcee_2.fuz
+skyrim.esm\maleuniquenazir\db11_db11nazirbeginplayerr_000769d3_4.fuz
+skyrim.esm\maleuniqueperyite\da13_da13peryitetoplevelto_000a8057_1.fuz
+skyrim.esm\maleuniqueseptimus\da04_da04septimuscubewhatt_000e4a36_3.fuz
+skyrim.esm\maleuniquesheogorath\da15_da15sheomeet1a_0002bcfc_6.fuz
+skyrim.esm\maleuniquetullius\cw_cwsharedinfo_000e6c7e_1.fuz
+skyrim.esm\maleuniqueulfric\cw_cwsharedinfo_000ce099_4.fuz
+skyrim.esm\malewarlock\dunhobsfallqst__00082fb8_1.fuz
+skyrim.esm\maleyoungeager\wejs02_wejs02gourmet_000b5d3e_2.fuz
+skyrim.esm\specialfemaleuniquegormlaith\mq304__00096ff8_1.fuz
+skyrim.esm\specialmaleuniquefelldir\mq206__000cd9eb_2.fuz
+skyrim.esm\specialmaleuniquehakon\mq305_mq305heroblockingtop_000af66c_1.fuz
+skyrim.esm\specialmaleuniquetsun\mq304_mq304tsunintroa2_0004fa47_1.fuz
+Sound\Voice\
+startOpenMicMonitoring
+stopOpenMicMonitoring
+Stream Called for {}
+stream.php
+streamv2.php
+stt.php?stuff
+Toggling _openmic_muted to {}
+ui/api/chim_aiview.php?npc_name=
+ui/api/chim_debugger.php?limit=20
+ui/api/chim_overlay.php
+ui/api/eventlog.php?limit=
+upl.php?stuff
+Using AIAgent.ini configuration: http://{}:{}{}
+Using auto-discovered configuration: http://{}:{}{}
+Using default fallback configuration: http://{}:{}{}
+void __cdecl AIAgent::setTalking(bool)
+void __cdecl AIAgentManager::deleteAgent(class std::shared_ptr<class AIAgent> &)
+void __cdecl AIAgentManager::deleteAgentByName(const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &)
+void __cdecl HTTPManager::log(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+void __cdecl HTTPManager::log(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class RE::Actor *)
+void __cdecl HTTPManager::log(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+void __cdecl HTTPManager::postGameData(const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,const class nlohmann::json_abi_v3_11_2::basic_json<class std::map,class std::vector,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,bool,__int64,unsigned __int64,double,class std::allocator,struct nlohmann::json_abi_v3_11_2::adl_serializer,class std::vector<unsigned char,class std::allocator<unsigned char> > > &)
+void __cdecl HTTPManager::postGameData::<lambda_1>::operator ()(void) const
+void __cdecl HTTPManager::stream(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,class RE::Actor *,int)
+void __cdecl HTTPManager::stream(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >,int)
+void __cdecl InterruptNPC(class RE::Actor *,class AIAgent *)
+void __cdecl openMicMonitoringLoop(void)
+void __cdecl RefreshAIAgentEquipment(class RE::Actor *,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,bool)
+void __cdecl RefreshAIAgentFurniture(class RE::Actor *,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)
+void __cdecl RefreshAIAgentInventory(class RE::Actor *,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,bool)
+void __cdecl RefreshAIAgentSkills(class RE::Actor *,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,bool)
+void __cdecl RefreshAIAgentSpells(class RE::Actor *,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,bool)
+void __cdecl RefreshAIAgentStats(class RE::Actor *,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,bool)
+void __cdecl REL::IDDatabase::header_t::read(class REL::IDDatabase::istream_t &,unsigned char)
+void __cdecl SpeakManager::process(class AIAgent *)
+void __cdecl ThreadPool::enqueue<class HTTPManager::log::<lambda_1>>(const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class HTTPManager::log::<lambda_1> &&,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class std::chrono::duration<__int64,struct std::ratio<1,1000> >)
+void __cdecl ThreadPool::enqueue<class HTTPManager::postGameData::<lambda_1>>(const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class HTTPManager::postGameData::<lambda_1> &&,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class std::chrono::duration<__int64,struct std::ratio<1,1000> >)
+void __cdecl ThreadPool::enqueue<class HTTPManager::stream::<lambda_1>>(const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class HTTPManager::stream::<lambda_1> &&,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class std::chrono::duration<__int64,struct std::ratio<1,1000> >)
+void __cdecl ThreadPool::enqueue<class HTTPManager::stream::<lambda_2>>(const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class HTTPManager::stream::<lambda_2> &&,const class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &,class std::chrono::duration<__int64,struct std::ratio<1,1000> >)
+void __cdecl triggerOpenMicRecording(void)
+void __cdecl triggerOpenMicRecordingEnd(void)
+vsx.php?stuff
+Warning: CHIM can't keep up with game load! Check AIAgent.log for details.
+WHISPER
+window.chimServerUrl = '
+window.initDebugger('
+window.initStatusHUD('
+WinHTTP Book Uploader/1.0
+WinHTTP CSV Uploader/1.0
+WinHTTP Example/1.0
+WinHTTP Voice Uploader/1.0
+WINHTTP.dll
+WinHttpAddRequestHeaders
+WinHttpAddRequestHeaders failed
+WinHttpCloseHandle
+WinHttpConnect
+WinHttpConnect failed
+WinHttpOpen
+WinHttpOpen failed
+WinHttpOpenRequest
+WinHttpOpenRequest failed
+WinHttpQueryHeaders
+WinHttpReadData
+WinHttpReadData failed
+WinHttpReceiveResponse
+WinHttpReceiveResponse failed
+WinHttpSendRequest
+WinHttpSendRequest failed
+WinHttpWriteData

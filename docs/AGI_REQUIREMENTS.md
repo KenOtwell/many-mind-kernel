@@ -494,7 +494,7 @@ gamma = 0.5 if resolved else 0.95  # Decay rate
 
 **Status:** 🔴 Formal specification complete, implementation is research-grade
 
-**Source:** Kato sessions on relational diffusion / weak entanglement (2026-04), Ken Ong (configuration space / interaction basis insight)
+**Source:** Kato sessions on relational diffusion / weak entanglement (2026-04), Ken Otwell (configuration space / interaction basis insight)
 
 **Core Concept — Weak Entanglement:**
 When the dynamics of elements cannot be modeled independently because their trajectories overlap in a non-linear constraint manifold. They don't share state, but their possible futures interfere because they cohabit a shared constraint surface.
@@ -712,7 +712,7 @@ When the dynamics of elements cannot be modeled independently because their traj
   - dLLM denoising is structurally isomorphic to the harmonic buffer cognitive cycle — iterative refinement toward attractors via gradient navigation
   - The denoising trajectory is instrumentable for jerk/snap/binding signals during generation (TR-8)
   - Kato's recurrence analysis proves dLLM's dynamical system properties (fixed points, attractors, blocked nonlinearities) are categorically more expressive than feed-forward generation
-  - "Weak entanglement" (Ken Ong coinage): dynamics that can't be modeled independently due to overlapping trajectories on shared constraint manifolds — the missing inductive bias in current generative models
+  - "Weak entanglement" (Ken Otwell coinage): dynamics that can't be modeled independently due to overlapping trajectories on shared constraint manifolds — the missing inductive bias in current generative models
   - Configuration space with interaction basis solves the nonlinear interpolation problem via linear interpolation in interaction coordinates
   - MMK's existing architecture IS a configuration-space dynamical system — the EMA buffer update IS Euler integration of the weak entanglement operator
   - Moral education formalizes as fixed-point distillation with fable-first curriculum — compressing moral arcs into the slow buffer's capture window before high-frequency reward signals can dominate

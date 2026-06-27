@@ -15,8 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Union
-from uuid import uuid4
+from typing import Any, Union
 
 import json
 
@@ -29,7 +28,7 @@ from shared.schemas import (
     TickPackage,
     TurnResponse,
 )
-from shared.constants import COLLECTION_NPC_MEMORIES
+from shared.constants import COLLECTION_NPC_MEMORIES, EMOTIONAL_DIM
 from mindcore import qdrant_wrapper
 from progeny.src.event_accumulator import EventAccumulator, TurnContext
 from progeny.src.agent_scheduler import AgentScheduler, DispatchGroup, NpcScheduleInfo
@@ -43,9 +42,19 @@ from progeny.src import emotional_delta
 from mindcore.harmonic_buffer import HarmonicState, build_modulators
 from progeny.src.memory_writer import MemoryWriter
 from progeny.src.memory_retrieval import MemoryRetriever, MemoryBundle
-from progeny.src.compression import ArcCompressor, SceneCompressor, DEFAULT_SNAP_THRESHOLD
+from progeny.src.compression import ArcCompressor, SceneCompressor
 from progeny.src import qdrant_client as progeny_qdrant
 from mindcore.uncertainty import compute_certainty
+from progeny.src import goal_priming
+from progeny.src import goal_lifecycle
+from progeny.src import identity_kernel
+from progeny.src import acquaintance
+from progeny.src import valence
+from progeny.src import social_goals
+from progeny.src import disclosure
+from progeny.src import memory_reconsolidation
+from progeny.src.goal_pool import GoalPool, GoalState, seed_goals
+from progeny.src.goal_lifecycle import LifecycleStore
 from mindcore import embedding as shared_embedding
 from mindcore import emotional as shared_emotional
 
@@ -65,6 +74,12 @@ _memory_writer = MemoryWriter()
 _memory_retriever = MemoryRetriever()
 _arc_compressor = ArcCompressor(writer=_memory_writer)
 _scene_compressor = SceneCompressor()
+
+# Goal resonance pool — seeded at startup via initialize_goals().
+_goal_pool = GoalPool()
+
+# Per-(agent, goal) defeasible lifecycle state (Phase 2).
+_lifecycle = LifecycleStore()
 
 # Reminding queue
 # Retrieval from tick N enters the prompt on tick N+1 (not N).
@@ -113,6 +128,171 @@ def _build_schedule_info(turn_context: TurnContext) -> list[NpcScheduleInfo]:
             curvature=curvature,
         ))
     return info_list
+
+
+# ---------------------------------------------------------------------------
+# Goal resonance — priming, curiosity nudge, recalled-content surfacing
+# ---------------------------------------------------------------------------
+
+async def initialize_goals() -> None:
+    """Seed the goal catalogue into Qdrant + the in-memory pool.
+
+    Called once from the server lifespan after collections exist. Idempotent:
+    deterministic goal IDs make re-seeding an in-place upsert. Safe to call when
+    the embedding pipeline isn't loaded — it degrades to in-memory only.
+    """
+    try:
+        count = await seed_goals(_goal_pool)
+        social = await social_goals.seed_social_goals(_goal_pool)
+        logger.info(
+            "Goal pool initialized: %d goals (%d + %d social persisted to Qdrant)",
+            len(_goal_pool), count, social,
+        )
+    except Exception:
+        logger.exception("Goal seeding failed — continuing without goals")
+
+
+def _scene_percept_text(turn_context: TurnContext) -> str:
+    """Build a single percept string for this tick's scene.
+
+    Concatenates recent world events and the player input — the shared,
+    observable frame that goal attractors resonate against. Embedded once and
+    reused across agents (the scene is shared; only the emotional query differs
+    per agent).
+    """
+    parts: list[str] = []
+    for event in turn_context.world_events[-10:]:
+        if event.raw_data:
+            parts.append(event.raw_data)
+    if turn_context.player_input:
+        parts.append(turn_context.player_input)
+    return " ".join(parts).strip()
+
+
+async def _prime_goals_for_turn(
+    turn_context: TurnContext,
+) -> dict[str, goal_priming.GoalPrimingResult]:
+    """Resonance-prime goals for every active agent that carries them.
+
+    Applies the curiosity nudge and standing motivational pull to the harmonic
+    buffers immediately (before scheduling, so volatility can promote attention
+    this same turn). Returns per-agent results so the caller can surface
+    recalled goal content into this tick's prompt. No actions are emitted —
+    priming only shifts affect and recall.
+    """
+    if not shared_embedding.is_loaded() or not shared_emotional.is_loaded():
+        return {}
+    if len(_goal_pool) == 0:
+        return {}
+
+    percept = _scene_percept_text(turn_context)
+    if not percept:
+        return {}
+
+    # Embed the shared scene once — the percept is identical per agent, so
+    # computing it per agent would be wasteful (compute-once).
+    try:
+        semantic_query = shared_embedding.embed_one(percept).tolist()
+    except Exception:
+        logger.exception("Goal priming: percept embedding failed")
+        return {}
+
+    view = goal_lifecycle.PerceptView.from_turn_context(turn_context)
+
+    # 6d: surface each agent's co-present strangers so the get-acquainted goal's
+    # acquainted() predicate and social activation can be evaluated this tick.
+    present = set(turn_context.active_npc_ids)
+    for aid in turn_context.active_npc_ids:
+        strangers = social_goals.present_strangers(aid, present)
+        if strangers:
+            view.strangers[aid] = strangers
+    social_id = social_goals.social_goal_id()
+
+    results: dict[str, goal_priming.GoalPrimingResult] = {}
+    for agent_id in turn_context.active_npc_ids:
+        owned = _goal_pool.by_owner(agent_id)
+        if not owned:
+            continue
+
+        emotional_query = _harmonic_state.get_semagram(agent_id)
+        delta = _harmonic_state.get_delta(agent_id)
+        lambda_t = delta.lambda_t if delta is not None else 0.5
+
+        try:
+            res = await goal_priming.prime_goals(
+                agent_id, semantic_query, emotional_query, lambda_t=lambda_t,
+            )
+        except Exception:
+            logger.exception("Goal priming failed for %s", agent_id)
+            continue
+
+        # Defeasible lifecycle: recompute predicates and transition per-agent
+        # goal state (candidate/committed/satisfied/reverted) for this tick.
+        activations = {a.goal_id: a.activation for a in res.activations}
+
+        # 6d: the get-acquainted goal is driven by the social state, not by
+        # semantic resonance alone — inject its activation from co-present
+        # strangers, gated by valence (warmth promotes, wariness suppresses).
+        agent_strangers = view.strangers.get(agent_id, set())
+        if agent_strangers:
+            social_act = social_goals.social_activation(agent_id, agent_strangers)
+            activations[social_id] = max(activations.get(social_id, 0.0), social_act)
+
+        transitions = goal_lifecycle.update_lifecycle(
+            agent_id, owned, _lifecycle, activations, view,
+        )
+
+        # Prior-vs-individual affect gap toward any co-present person — an
+        # expectation violation is a salience signal fed into dissonance (6d).
+        gap = social_goals.affect_gap(agent_id, present)
+
+        # Dissonance: unmet enablers + volatility + uncertainty + affect gap.
+        dissonance = goal_lifecycle.compute_dissonance(
+            agent_id, owned, _lifecycle, view,
+            curvature=(delta.curvature if delta is not None else 0.0),
+            snap=(delta.snap if delta is not None else 0.0),
+            coherence=(delta.coherence if delta is not None else 1.0),
+            certainty=_harmonic_state.get_certainty(agent_id),
+            affect_gap=gap,
+        )
+
+        # Transient curiosity spike from the leading resonance this tick.
+        if any(res.nudge):
+            _harmonic_state.apply_nudge(agent_id, res.nudge)
+
+        # Standing motivational pull from active (unsatisfied) goals, amplified
+        # by dissonance — the unmet hunt tugs harder when enablers are missing.
+        active = _lifecycle.active_nodes(agent_id, owned)
+        if active:
+            base = goal_priming.STANDING_PULL_GAIN * sum(n.base_weight for n in active)
+            pull_mag = base * (1.0 + dissonance)
+            pull = [v * pull_mag for v in goal_priming.curiosity_direction()]
+            _harmonic_state.apply_nudge(agent_id, pull)
+
+        # 6d: surface the get-acquainted goal as recalled content while it is
+        # active (candidate/committed) — affect + recall, never an imperative.
+        social_node = _goal_pool.get(social_id)
+        if (
+            social_node is not None
+            and _lifecycle.state_of(agent_id, social_node)
+            in (GoalState.CANDIDATE, GoalState.COMMITTED)
+            and social_node.statement not in res.recall
+        ):
+            res.recall.append(social_node.statement)
+
+        if res.top is not None or transitions:
+            logger.info(
+                "Goal priming: agent=%s top=%s act=%.3f dissonance=%.2f recall=%d transitions=%s",
+                agent_id,
+                res.top.name if res.top else "-",
+                res.top.activation if res.top else 0.0,
+                dissonance,
+                len(res.recall),
+                [f"{t.name}:{t.old.value}->{t.new.value}" for t in transitions] or "none",
+            )
+        results[agent_id] = res
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +399,7 @@ async def _fire_recognition_retrieval(
         return
 
     recognition_count = 0
+    stranger_count = 0
     for agent_id in existing_agents:
         emo_query = _harmonic_state.get_semagram(agent_id)
         # Dummy semantic query — recognition is emotion/referent driven.
@@ -239,7 +420,8 @@ async def _fire_recognition_retrieval(
                     broad_limit=10,
                     final_limit=3,  # Lightweight — just top recognition hits
                 )
-                if bundle.recent or bundle.summaries:
+                recognized = bool(bundle.recent or bundle.summaries)
+                if recognized:
                     # Merge into existing reminding queue entry for this agent
                     existing = _reminding_queue.get(agent_id)
                     if existing is None:
@@ -249,6 +431,19 @@ async def _fire_recognition_retrieval(
                         existing.summaries.extend(bundle.summaries)
                         existing.expandable_refs.extend(bundle.expandable_refs)
                     recognition_count += 1
+
+                # Stranger detection (Phase 6b): no personal memory recalled
+                # AND no FactPool belief/reputation-lore about the newcomer ->
+                # this agent regards the newcomer as a stranger. Server-side
+                # signal only (feeds 6c valence + 6d goal); never prompt-injected.
+                if acquaintance.is_stranger(
+                    _fact_pool, agent_id, newcomer_id, recognition_empty=not recognized,
+                ):
+                    if not acquaintance.is_known_stranger(agent_id, newcomer_id):
+                        stranger_count += 1
+                    acquaintance.record_stranger(agent_id, newcomer_id)
+                else:
+                    acquaintance.clear_stranger(agent_id, newcomer_id)
             except Exception as exc:
                 logger.debug(
                     "Recognition retrieval failed for %s re: %s: %s",
@@ -260,6 +455,287 @@ async def _fire_recognition_retrieval(
             "Recognition bootstrap: %d agents recalled memories of %d newcomers",
             recognition_count, len(entered_npc_ids),
         )
+    if stranger_count:
+        logger.info(
+            "Stranger detection: %d new stranger pair(s) across %d newcomers",
+            stranger_count, len(entered_npc_ids),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Valence-conditioned approach (Phase 6c)
+# ---------------------------------------------------------------------------
+
+# Approach-nudge tunables — a lean, not a shove (cf. goal_priming gains).
+VALENCE_NUDGE_GAIN = 0.3       # base magnitude, scaled by |valence|·confidence·support
+VALENCE_SUPPORT_CAP = 4        # supporting memories at which the support factor saturates
+STRANGER_CURIOSITY = 0.1       # mild novelty curiosity toward a neutral unknown person
+_VALENCE_EPS = 1e-6
+
+
+def _wariness_direction() -> list[float]:
+    """Guarded affect direction: raise fear, lower safety.
+
+    The fear component is damped per-agent by the Confidence modulator, so a
+    Brave/Foolhardy NPC barely registers it while a Cowardly one feels it
+    sharply — personality shaping for free, no keyword controller.
+    """
+    d = [0.0] * EMOTIONAL_DIM
+    d[0] = 1.0     # fear up
+    d[7] = -1.0    # safety down
+    return d
+
+
+async def _condition_approach_by_valence(
+    entered_npc_ids: list[str],
+    all_active_npc_ids: list[str],
+) -> None:
+    """Condition each existing agent's approach disposition toward each
+    newcomer by valence (Phase 6c).
+
+    One percept-cued retrieval per (observer, newcomer): the perceived person
+    (sharpened by occupation/tags) on the semantic axis, the observer's affect
+    on the emotional axis. Specific memories of the newcomer override the class
+    prior as a blend with hysteresis. Warmth promotes the get-acquainted
+    resonance (a curiosity nudge); wariness suppresses it (a guarded nudge); a
+    neutral disposition toward a known stranger yields mild novelty curiosity.
+    Expressed ONLY as an affect nudge plus class-congruent recall (queued
+    one-tick-delayed, anti-recursion) — never an imperative; the
+    Assistance/Confidence/Aggression dials emerge from the felt state.
+    """
+    global _reminding_queue
+
+    if not shared_embedding.is_loaded() or not shared_emotional.is_loaded():
+        return
+
+    entered_set = set(entered_npc_ids)
+    existing_agents = [npc for npc in all_active_npc_ids if npc not in entered_set]
+    if not existing_agents:
+        return
+
+    warm_count = 0
+    wary_count = 0
+    for observer in existing_agents:
+        emo_query = _harmonic_state.get_deviation(observer)
+        obs_kernel = identity_kernel.get(observer)
+        traits = None
+        tone = ""
+        if obs_kernel is not None:
+            raw_traits = obs_kernel.public.get("corePersonalityTraits")
+            traits = raw_traits if isinstance(raw_traits, list) else None
+            tone = obs_kernel.tone()
+        approach_gain = valence.approachability(traits, tone)
+
+        for subject in entered_npc_ids:
+            subj_kernel = identity_kernel.get(subject)
+            class_signal = subj_kernel.class_signal() if subj_kernel is not None else ""
+            percept = valence.build_percept_text(subject, class_signal)
+            if not percept:
+                continue
+            try:
+                semantic_query = shared_embedding.embed_one(percept).tolist()
+                reading = await valence.percept_cued_valence(
+                    observer, subject, semantic_query, emo_query,
+                )
+            except Exception as exc:
+                logger.debug(
+                    "Valence conditioning failed for %s re: %s: %s",
+                    observer, subject, exc,
+                )
+                continue
+
+            blended = valence.blend_valence(reading)
+            # 6d: cache the effective valence + prior-vs-individual gap so the
+            # get-acquainted goal can gate its activation and feed dissonance.
+            gap = (
+                abs(reading.general - reading.individual)
+                if (reading.general_support and reading.individual_support)
+                else 0.0
+            )
+            valence.record_social(observer, subject, blended.effective, gap)
+            support = reading.general_support + reading.individual_support
+            support_factor = (
+                min(support, VALENCE_SUPPORT_CAP) / VALENCE_SUPPORT_CAP
+                if support else 0.0
+            )
+            evidence_mag = (
+                VALENCE_NUDGE_GAIN * abs(blended.effective)
+                * reading.confidence * support_factor
+            )
+
+            if blended.effective > _VALENCE_EPS and evidence_mag > 0.0:
+                gain = evidence_mag * approach_gain
+                nudge = [v * gain for v in goal_priming.curiosity_direction()]
+                warm_count += 1
+            elif blended.effective < -_VALENCE_EPS and evidence_mag > 0.0:
+                gain = evidence_mag / max(approach_gain, 0.1)
+                nudge = [v * gain for v in _wariness_direction()]
+                wary_count += 1
+            elif acquaintance.is_known_stranger(observer, subject):
+                # Neutral disposition toward an unknown person: mild novelty
+                # curiosity. The get-acquainted goal (6d) builds on this.
+                gain = VALENCE_NUDGE_GAIN * STRANGER_CURIOSITY * approach_gain
+                nudge = [v * gain for v in goal_priming.curiosity_direction()]
+                warm_count += 1
+            else:
+                continue
+
+            _harmonic_state.apply_nudge(observer, nudge)
+
+            # Surface class-congruent recall as ordinary recalled content for
+            # the NEXT tick (one-tick delay, like recognition).
+            if reading.recall:
+                bundle = _reminding_queue.get(observer)
+                if bundle is None:
+                    bundle = MemoryBundle(agent_id=observer)
+                    _reminding_queue[observer] = bundle
+                for text in reading.recall:
+                    bundle.summaries.append({"text": text, "tier": "SOCIAL"})
+
+    if warm_count or wary_count:
+        logger.info(
+            "Valence approach conditioning: %d warm, %d wary nudge(s) across %d newcomers",
+            warm_count, wary_count, len(entered_npc_ids),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Disclosure -> hearsay propagation (Phase 6e)
+# ---------------------------------------------------------------------------
+
+async def _propagate_disclosures(
+    responses: list[AgentResponse],
+    all_active_npc_ids: list[str],
+) -> None:
+    """Reciprocal disclosure -> hearsay propagation (Phase 6e).
+
+    For each NPC that spoke this turn, treat its utterance to a not-yet-met
+    co-present NPC as an introduction: write the listener a hearsay memory and
+    the speaker a reciprocal telling memory (so both remember the exchange),
+    record a symbolic identity fact, and clear the stranger flag both ways.
+    Gated on the stranger ledger so it fires once per pair and is idempotent if
+    it re-fires. Server-side only; nothing is injected into the prompt.
+    """
+    if not shared_embedding.is_loaded() or not shared_emotional.is_loaded():
+        return
+    spoke = {r.agent_id for r in responses if r.utterance}
+    if not spoke:
+        return
+    others = [npc for npc in all_active_npc_ids if npc not in ("Player", "")]
+
+    count = 0
+    for speaker in spoke:
+        kernel = identity_kernel.get(speaker)
+        if kernel is None:
+            continue
+        listeners = [
+            listener for listener in others
+            if listener != speaker
+            and (
+                acquaintance.is_known_stranger(speaker, listener)
+                or acquaintance.is_known_stranger(listener, speaker)
+            )
+        ]
+        if not listeners:
+            continue
+        descriptor = disclosure.identity_descriptor(kernel)
+        try:
+            id_vec = shared_embedding.embed_one(
+                disclosure.fact_content(speaker, descriptor)
+            ).tolist()
+        except Exception:
+            logger.debug("Disclosure embedding failed for %s", speaker, exc_info=True)
+            continue
+        speaker_reaction = _harmonic_state.get_deviation(speaker)
+        for listener in listeners:
+            try:
+                if await disclosure.propagate_introduction(
+                    writer=_memory_writer,
+                    fact_pool=_fact_pool,
+                    speaker=speaker,
+                    listener=listener,
+                    speaker_kernel=kernel,
+                    identity_semantic_vec=id_vec,
+                    listener_reaction=_harmonic_state.get_deviation(listener),
+                    speaker_reaction=speaker_reaction,
+                    game_ts=time.time(),
+                ):
+                    count += 1
+            except Exception as exc:
+                logger.debug(
+                    "Disclosure propagation failed %s -> %s: %s", speaker, listener, exc,
+                )
+
+    if count:
+        logger.info("Disclosure propagation: %d introduction(s) propagated", count)
+
+
+# ---------------------------------------------------------------------------
+# Sleep-time memory reconsolidation (goodnight trigger)
+# ---------------------------------------------------------------------------
+
+# Session event types that trigger an offline reconsolidation pass. `goodnight`
+# is the canonical sleep boundary; `waitstart` could be added later for naps.
+SLEEP_SESSION_TYPES: frozenset[str] = frozenset({"goodnight"})
+
+RECON_REINTERPRET_PROMPT = (
+    "You re-interpret an NPC's old memory through their matured understanding. "
+    "Rewrite it as ONE concise sentence capturing what the memory now means to "
+    "them and how they would understand or handle that kind of situation today "
+    "— the latest version of the lesson, useful when facing a similar problem. "
+    "Preserve the facts; invent nothing. Output only the sentence."
+)
+
+
+def _has_sleep_trigger(package: TickPackage) -> bool:
+    """True if this tick carries a sleep/goodnight session event."""
+    return any(e.event_type in SLEEP_SESSION_TYPES for e in package.events)
+
+
+async def _reconsolidation_reinterpreter(content: str) -> str:
+    """LLM reframing for the SWS phase.
+
+    Returns '' on failure so the orchestrator falls back to its heuristic gist.
+    Reuses the shared llm_client; the prompt asks for the matured, problem-
+    solving understanding of the memory (the latest version of the lesson).
+    """
+    try:
+        result = await llm_client.generate([
+            {"role": "system", "content": RECON_REINTERPRET_PROMPT},
+            {"role": "user", "content": content},
+        ])
+        return (result.content or "").strip()
+    except LLMError as exc:
+        logger.debug("Reconsolidation reinterpret LLM error (using fallback): %s", exc)
+        return ""
+
+
+async def _run_sleep_reconsolidation() -> None:
+    """Run the goodnight reconsolidation pass for every agent with live state.
+
+    Reads the live slow buffers as the matured baseline and writes RECON points
+    (the source RAW stays immutable). Independent of the turn pipeline and of
+    operational age-salience compaction. Non-fatal.
+    """
+    agent_ids = _harmonic_state.agent_ids
+    if not agent_ids:
+        logger.info("Goodnight: no agents with emotional state — reconsolidation skipped")
+        return
+    try:
+        report = await memory_reconsolidation.run_reconsolidation(
+            agent_ids,
+            _harmonic_state.get_slow,
+            writer=_memory_writer,
+            reinterpret_fn=_reconsolidation_reinterpreter,
+        )
+        logger.info(
+            "Goodnight reconsolidation: agents=%d reconsolidated=%d resolved=%d "
+            "stalled=%d blocked=%d",
+            report.scanned_agents, report.reconsolidated, report.resolved,
+            report.stalled, report.skipped_blocked,
+        )
+    except Exception:
+        logger.exception("Goodnight reconsolidation pass failed (non-fatal)")
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +788,38 @@ def _apply_modulators_for_new_npcs(turn_context: TurnContext) -> None:
                 break  # One addnpc per agent is enough
 
 
+async def _bootstrap_identities_for_new_npcs(turn_context: TurnContext) -> None:
+    """Load seed identity kernels for NPCs seen for the first time (Phase 6a).
+
+    Pure ID fetch from skyrim_npc_profiles — no embedding required. Cached per
+    agent for the process lifetime. Degrades gracefully: NPCs absent from the
+    seed (modded/custom) get an empty sentinel kernel so we do not re-query
+    them every tick, and simply contribute no identity clause. A transient
+    Qdrant error is left uncached so the next tick can retry.
+    """
+    loaded = 0
+    for agent_id in turn_context.active_npc_ids:
+        if identity_kernel.has(agent_id):
+            continue
+        slug = identity_kernel.agent_id_to_slug(agent_id)
+        if not slug:
+            identity_kernel.put(identity_kernel.IdentityKernel(agent_id=agent_id, slug=""))
+            continue
+        try:
+            payload = await progeny_qdrant.read_profile(slug)
+        except Exception:
+            logger.debug("Identity bootstrap failed for %s", agent_id, exc_info=True)
+            continue
+        if payload is None:
+            # Negative cache: the seed has no such NPC — don't re-query each tick.
+            identity_kernel.put(identity_kernel.IdentityKernel(agent_id=agent_id, slug=slug))
+            continue
+        identity_kernel.put(identity_kernel.parse_kernel(agent_id, payload))
+        loaded += 1
+    if loaded:
+        logger.info("Identity bootstrap: loaded %d identity kernel(s)", loaded)
+
+
 # ---------------------------------------------------------------------------
 # Per-group pipeline: prompt → LLM → expand
 # ---------------------------------------------------------------------------
@@ -329,6 +837,16 @@ async def _run_group(
     Returns (agent_responses, generate_result). On LLM error, returns
     empty responses and None result (graceful degradation per group).
     """
+    # Compact self-identity per agent (Phase 6a) — the agent's own Tier-0/1
+    # block carries its self-concept; absent/sentinel kernels contribute nothing.
+    identities: dict[str, Any] = {}
+    for scheduled in group.agents:
+        kernel = identity_kernel.get(scheduled.agent_id)
+        if kernel is not None:
+            clause = kernel.self_clause()
+            if clause:
+                identities[scheduled.agent_id] = clause
+
     messages = prompt_formatter.build_prompt(
         turn_context, group.agents, all_active_npc_ids,
         harmonic_state=_harmonic_state,
@@ -336,6 +854,7 @@ async def _run_group(
         fact_pool=_fact_pool,
         memory_bundles=memory_bundles,
         speech_earshot=_accumulator._speech_earshot,
+        identities=identities or None,
     )
 
     try:
@@ -410,6 +929,13 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     # Step 1: Accumulate events, detect turn boundary
     turn_context = _accumulator.ingest(package)
 
+    # Sleep-time memory reconsolidation: a goodnight session event triggers an
+    # offline pass (REM probe -> SWS reinterpret) over each known agent's
+    # memories. Independent of the turn pipeline; returns an Ack (no turn).
+    if _has_sleep_trigger(package):
+        await _run_sleep_reconsolidation()
+        return AckResponse(tick_id=tick_id)
+
     if turn_context is None:
         logger.debug("Tick %s: data-only, accumulated %d events", tick_id, len(package.events))
         return AckResponse(tick_id=tick_id)
@@ -447,6 +973,9 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     # Papyrus extension sends values, extract them from parsed_data here.
     _apply_modulators_for_new_npcs(turn_context)
 
+    # Identity kernels for first-seen NPCs (Phase 6a) — pure ID fetch, cached.
+    await _bootstrap_identities_for_new_npcs(turn_context)
+
     # Emotional pipeline: inbound text → 9d projection → update harmonic buffers
     emotional_delta.process_inbound(turn_context, _harmonic_state)
 
@@ -468,6 +997,12 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     # Results go to _reminding_queue (one-tick delay) — private, Layer 2.
     if turn_context.presence_changes.entered:
         await _fire_recognition_retrieval(
+            turn_context.presence_changes.entered,
+            turn_context.active_npc_ids,
+        )
+        # Phase 6c: valence-condition each existing agent's approach toward the
+        # newcomers (warmth promotes, wariness suppresses) via affect + recall.
+        await _condition_approach_by_valence(
             turn_context.presence_changes.entered,
             turn_context.active_npc_ids,
         )
@@ -500,6 +1035,11 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
                     )
     except Exception as exc:
         logger.warning("RAW write pass failed (non-fatal): %s", exc)
+
+    # Goal resonance priming — BEFORE scheduling so the curiosity nudge can
+    # raise curvature and promote an agent's attention this same turn. Applies
+    # the emotional nudge + standing pull; returns recall hints to surface.
+    goal_results = await _prime_goals_for_turn(turn_context)
 
     # Step 2: Schedule agents — build NpcScheduleInfo with curvature data.
     # Position data comes from util_location_npc events (when available).
@@ -571,6 +1111,20 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     # This tick's prompt uses PRIOR remindings (last tick's retrieval),
     # not the fresh retrieval we just stored in _reminding_queue.
     memory_bundles: dict[str, MemoryBundle] = prior_remindings
+
+    # Surface resonant goals as recalled content (NOT an imperative block).
+    # The goal arrives like any other remembered fact; recognition and binding
+    # emerge in the LLM. Goal priming is percept-driven, so it carries no
+    # retrieval-recursion risk and can surface this same tick.
+    for agent_id, gres in goal_results.items():
+        if not gres.recall:
+            continue
+        bundle = memory_bundles.get(agent_id)
+        if bundle is None:
+            bundle = MemoryBundle(agent_id=agent_id)
+            memory_bundles[agent_id] = bundle
+        for statement in gres.recall:
+            bundle.summaries.append({"text": statement, "tier": "GOAL"})
 
     # Merge recognition remindings into memory_bundles if any exist.
     # Recognition retrieval fired earlier in this tick goes into
@@ -657,6 +1211,11 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
                         resp.agent_id,
                         buf.active_task or "(cleared)",
                     )
+
+    # Phase 6e: propagate introductions — an NPC speaking to someone it has not
+    # met reciprocally de-strangers them (hearsay + telling memories + a
+    # symbolic identity fact), closing the acquaintance loop for both parties.
+    await _propagate_disclosures(all_responses, turn_context.active_npc_ids)
 
     # Emotional adoption: agent's own words shift its state (bidirectional pipeline)
     outbound_deltas = emotional_delta.process_outbound(all_responses, _harmonic_state)

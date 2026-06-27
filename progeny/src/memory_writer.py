@@ -70,15 +70,20 @@ class MemoryWriter:
         location: Optional[str] = None,
         privacy_level: str = PrivacyLevel.COLLECTIVE.value,
         extra_payload: Optional[dict[str, Any]] = None,
+        point_id: Optional[str] = None,
     ) -> str:
         """
         Write a RAW event point. Called for every event that enters
         the emotional delta pipeline — both inbound game events AND
         outbound LLM response text (bidirectional).
 
+        A deterministic point_id may be supplied (e.g. provenance-keyed
+        hearsay/disclosure memories in 6e) so retellings upsert the same
+        point rather than duplicating; defaults to a fresh uuid4.
+
         Returns the point ID.
         """
-        point_id = str(uuid4())
+        point_id = point_id or str(uuid4())
         payload: dict[str, Any] = {
             "agent_id": agent_id,
             "tier": CompressionTier.RAW.value,
@@ -278,6 +283,108 @@ class MemoryWriter:
         logger.debug(
             "MAX write (essence): agent=%s from %d arcs id=%s",
             agent_id, len(source_arc_ids), point_id,
+        )
+        return point_id
+
+    # ------------------------------------------------------------------
+    # RECON tier — sleep-time reconsolidated reinterpretations
+    # ------------------------------------------------------------------
+
+    async def write_reconsolidated_summary(
+        self,
+        agent_id: str,
+        gist_text: str,
+        semantic_vector: list[float],
+        emotional_vector: list[float],
+        raw_point_ids: list[str],
+        game_ts: float,
+        *,
+        referents: Optional[list[str]] = None,
+        slow_snapshot: Optional[list[float]] = None,
+        version: int = 1,
+        dissonance_at_pass: float = 0.0,
+        residual_dissonance: float = 0.0,
+        supersedes: Optional[str] = None,
+        recon_attempts: int = 1,
+        recon_stalled: bool = False,
+        location: Optional[str] = None,
+        point_id: Optional[str] = None,
+    ) -> str:
+        """Write a RECON-tier reconsolidated summary (sleep-time reinterpretation).
+
+        Produced by the goodnight reconsolidation pass: the agent revisits an old
+        memory through its current (matured) slow buffer and re-encodes how it
+        landed. This writes a NEW derived point — the source RAW points are never
+        modified, so the original is always recoverable (see living doc
+        §Sleep-Time Memory Reconsolidation).
+
+        The dual vectors carry the immutable/mutable split:
+          semantic  — the ORIGINAL content embedding, copied unchanged. Facts are
+                      anchored; reconsolidation never rewrites what happened.
+          emotional — the RE-ENCODED reaction key (the reinterpretation): how the
+                      matured mind now feels about the same content.
+        `gist_text` is the condensed reframing used as the default in recall.
+
+        Provenance + recurrence metadata make the point defeasible and auditable:
+          raw_point_ids      — back-pointers to the source RAW (lazy deep recall).
+          slow_snapshot      — the producing mind-state (slow buffer) at pass time.
+          version            — monotonic; a later, more-mature pass supersedes.
+          supersedes         — prior RECON point id this one replaces (JTMS chain).
+          dissonance_at_pass — the probe dissonance that triggered this pass.
+          residual_dissonance — dissonance remaining AFTER the pass; >= threshold
+                               means the reinterpretation did not resolve it.
+          recon_attempts     — how many passes have targeted this source set.
+          recon_stalled      — True if reconsolidation did NOT bring dissonance
+                               below threshold (recurrence block: skip + flag,
+                               do not silently re-synthesize every night).
+
+        A deterministic point_id may be supplied so re-running the same pass
+        version upserts in place rather than duplicating; defaults to uuid4.
+
+        Returns the RECON point ID.
+        """
+        point_id = point_id or str(uuid4())
+        payload: dict[str, Any] = {
+            "agent_id": agent_id,
+            "tier": CompressionTier.RECON.value,
+            "content": gist_text,
+            "event_type": "reconsolidated_summary",
+            "game_ts": game_ts,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "raw_point_ids": raw_point_ids,
+            "referents": referents or [],
+            "location": location or "",
+            "privacy_level": PrivacyLevel.COLLECTIVE.value,
+            # Provenance — who/when/why this reinterpretation was produced.
+            "slow_snapshot": slow_snapshot or [],
+            "version": version,
+            "dissonance_at_pass": dissonance_at_pass,
+            "residual_dissonance": residual_dissonance,
+            "supersedes": supersedes,
+            # Recurrence block — guards against repeated re-synthesis.
+            "recon_attempts": recon_attempts,
+            "recon_stalled": recon_stalled,
+        }
+        try:
+            await get_client().upsert(
+                collection_name=COLLECTION_NPC_MEMORIES,
+                points=[
+                    PointStruct(
+                        id=point_id,
+                        vector={"semantic": semantic_vector, "emotional": emotional_vector},
+                        payload=payload,
+                    )
+                ],
+            )
+        except Exception as exc:
+            logger.error(
+                "RECON write failed — agent=%s v%d from %d raw: %s",
+                agent_id, version, len(raw_point_ids), exc,
+            )
+
+        logger.debug(
+            "RECON write: agent=%s v%d stalled=%s id=%s",
+            agent_id, version, recon_stalled, point_id,
         )
         return point_id
 

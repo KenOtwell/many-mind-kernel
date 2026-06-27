@@ -56,6 +56,32 @@ class TestCompressEntry:
         result = compress_entry(entry)
         assert result.startswith("NPC:")
 
+    def test_retains_later_sentence_entity(self):
+        """A salient entity past the first sentence survives the compression."""
+        entry = {"role": "assistant", "content": "Hello there. Find me in Whiterun."}
+        result = compress_entry(entry)
+        assert "Hello there." in result      # first sentence kept
+        assert "Whiterun" in result          # later-sentence entity retained
+
+    def test_retains_later_sentence_emotion(self):
+        """An emotion word past the first sentence survives the compression."""
+        entry = {"role": "assistant", "content": "Stay back. I am afraid of him."}
+        result = compress_entry(entry)
+        assert "afraid" in result
+
+    def test_no_residual_when_first_sentence_covers(self):
+        """No tags appended when the first sentence already holds them all."""
+        entry = {"role": "assistant", "content": "Lydia attacked."}
+        result = compress_entry(entry)
+        assert result == "NPC: Lydia attacked."
+
+    def test_later_sentence_keyword_reaches_keywords_tier(self):
+        """The retained entity flows through to the distilled keyword tier."""
+        line = compress_entry(
+            {"role": "assistant", "content": "Hello there. Find me in Whiterun."}
+        )
+        assert "Whiterun" in distill_keywords(line)
+
 
 # ---------------------------------------------------------------------------
 # distill_keywords

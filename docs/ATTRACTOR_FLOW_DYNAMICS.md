@@ -1,6 +1,6 @@
 # Attractor Flow Dynamics — The Cognitive Physics of the Many-Mind Kernel
 
-*Documented April 2026. Lineage: Ken Ong (architecture, theory), Kato/Copilot (operator-layer formalization, gate-adaptation law), Gemini (narrative validation). Source sessions: MindNotFormal.odt, Kato gate-adaptation analysis.*
+*Documented April 2026. Lineage: Ken Otwell (architecture, theory), Kato/Copilot (operator-layer formalization, gate-adaptation law), Gemini (narrative validation). Source sessions: MindNotFormal.odt, Kato gate-adaptation analysis.*
 
 **Cross-references:** KO47 (Structural Invariants), KO48 (UMA), SPIRAL_DIFFUSION_DESIGN.md (sapience modulation), The_Many_Mind_Kernel_Living_Doc.md (harmonic buffers, snap, λ(t))
 
@@ -288,7 +288,7 @@ No labels needed — these are just patterns in (D_t, R_t, θ_t):
 
 ## 5. Attractor Flow Dynamics — The Unifying Concept
 
-*Coined April 2026. Lineage: Ken Ong.*
+*Coined April 2026. Lineage: Ken Otwell.*
 
 Most cognitive architectures talk about "attractors" as static basins. But the MMK's architecture is dynamic, iterative, gradient-driven. A mind in this system doesn't "fall into" an attractor — it **flows through** a landscape shaped by dissonance gradients, buffer coherence, variance predictions, gate thresholds, and emotional curvature.
 

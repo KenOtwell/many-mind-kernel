@@ -30,8 +30,10 @@ from progeny.src.fact_pool import FactPool
 from shared.schemas import SpeechData, TickPackage, TypedEvent
 
 
-PASS = "\u2713"
-FAIL = "\u2717"
+# ASCII markers — Windows PowerShell's default console (CP1252) chokes on
+# the Unicode checkmark/cross when called from a stock environment.
+PASS = "[OK]  "
+FAIL = "[FAIL]"
 ok_count = 0
 fail_count = 0
 
