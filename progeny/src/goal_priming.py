@@ -14,69 +14,28 @@ See plan: Goal Resonance for Progeny — Phase 1.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from shared.constants import COLLECTION_GOALS, EMOTIONAL_DIM
 from progeny.src.goal_pool import OWNER_ALL
 from progeny.src.qdrant_client import search_vector
+from mindcore.goal import (
+    GoalActivation, GoalPrimingResult, prime_from_hits,
+    curiosity_direction,                              # re-exported for routes.py
+    CURIOSITY_GAIN, STANDING_PULL_GAIN,
+    DEFAULT_ACTIVATION_FLOOR, DEFAULT_RECALL_TOP_K, DEFAULT_BROAD_LIMIT,
+)
 
 logger = logging.getLogger(__name__)
 
-# Curiosity direction in the 9d semagram: excitement (dim 4) + residual
-# (dim 8) — the axes Skyrim's Surprised and Puzzled moods already map to. A
-# resonance hit pushes the felt state along this direction, which both colours
-# the prompt's emotional state and raises curvature so the scheduler pays the
-# agent more attention.
-EXCITEMENT_AXIS = 4
-RESIDUAL_AXIS = 8
 
-# Conversion gains — kept small; a nudge is a lean, not a shove.
-CURIOSITY_GAIN = 0.6        # transient spike per unit of leading activation
-STANDING_PULL_GAIN = 0.05   # per-tick pull from each active unsatisfied goal
+# Re-exported from mindcore for backwards-compat with any existing imports.
+__all__ = ["GoalActivation", "GoalPrimingResult", "prime_goals"]
 
-DEFAULT_BROAD_LIMIT = 20
-DEFAULT_ACTIVATION_FLOOR = 0.15   # below this, a goal is not considered primed
-DEFAULT_RECALL_TOP_K = 1
-
-
-@dataclass
-class GoalActivation:
-    """One goal's blended resonance with the current percept frame."""
-    goal_id: str
-    name: str
-    statement: str
-    activation: float
-    emotional_score: float = 0.0
-    semantic_score: float = 0.0
-
-
-@dataclass
-class GoalPrimingResult:
-    """Server-side priming output. NOT injected into the prompt as-is.
-
-    nudge is applied to the harmonic buffer; recall is surfaced as ordinary
-    recalled content. Deliberately carries no actions — resonance is a trigger,
-    not an action.
-    """
-    agent_id: str
-    activations: list[GoalActivation] = field(default_factory=list)
-    nudge: list[float] = field(default_factory=lambda: [0.0] * EMOTIONAL_DIM)
-    recall: list[str] = field(default_factory=list)
-
-    @property
-    def top(self) -> GoalActivation | None:
-        return self.activations[0] if self.activations else None
-
-
-def curiosity_direction() -> list[float]:
-    """Unit-ish 9d direction representing curiosity (excitement + residual)."""
-    d = [0.0] * EMOTIONAL_DIM
-    d[EXCITEMENT_AXIS] = 1.0
-    d[RESIDUAL_AXIS] = 1.0
-    return d
-
+# Axis indices — re-exported so tests that reference them directly still work.
+EXCITEMENT_AXIS: int = 4
+RESIDUAL_AXIS: int = 8
 
 def _owner_filter(agent_id: str) -> Filter:
     """Match goals owned by this agent OR shared by all (OWNER_ALL)."""
@@ -112,72 +71,11 @@ async def prime_goals(
         query=semantic_query, limit=broad_limit, query_filter=owner_filter,
     )
 
-    activations = _blend(emotional_hits, semantic_hits, lambda_t)
-    result = GoalPrimingResult(agent_id=agent_id, activations=activations)
-    if not activations:
-        return result
-
-    top = activations[0]
-    if top.activation >= activation_floor:
-        # Transient curiosity spike, scaled by the leading activation.
-        gain = CURIOSITY_GAIN * top.activation
-        result.nudge = [v * gain for v in curiosity_direction()]
-        # Recall hints: the strongest goals, as plain recalled statements.
-        result.recall = [
-            a.statement for a in activations[:recall_top_k]
-            if a.activation >= activation_floor and a.statement
-        ]
-    return result
-
-
-def _blend(
-    emotional_hits: list[dict],
-    semantic_hits: list[dict],
-    lambda_t: float,
-) -> list[GoalActivation]:
-    """Blend per goal: activation = (lambda*emo + (1-lambda)*sem) * base_weight.
-
-    Mirrors memory_retrieval._merge_and_score but scales by the goal's base
-    weight and sorts descending. Deduplicates by point ID.
-    """
-    by_id: dict[str, GoalActivation] = {}
-    complement = 1.0 - lambda_t
-
-    for hit in emotional_hits:
-        pid = hit["id"]
-        payload = hit.get("payload", {})
-        by_id[pid] = GoalActivation(
-            goal_id=pid,
-            name=payload.get("name", ""),
-            statement=payload.get("statement", ""),
-            activation=lambda_t * hit["score"],
-            emotional_score=hit["score"],
-        )
-
-    for hit in semantic_hits:
-        pid = hit["id"]
-        payload = hit.get("payload", {})
-        contrib = complement * hit["score"]
-        if pid in by_id:
-            by_id[pid].semantic_score = hit["score"]
-            by_id[pid].activation += contrib
-        else:
-            by_id[pid] = GoalActivation(
-                goal_id=pid,
-                name=payload.get("name", ""),
-                statement=payload.get("statement", ""),
-                activation=contrib,
-                semantic_score=hit["score"],
-            )
-
-    # Scale each blended score by the goal's base weight (captured from
-    # whichever axis payload carried it).
-    weights: dict[str, float] = {}
-    for hit in (*emotional_hits, *semantic_hits):
-        weights[hit["id"]] = float(hit.get("payload", {}).get("base_weight", 1.0))
-    for pid, act in by_id.items():
-        act.activation *= weights.get(pid, 1.0)
-
-    results = list(by_id.values())
-    results.sort(key=lambda a: a.activation, reverse=True)
-    return results
+    return prime_from_hits(
+        agent_id=agent_id,
+        emotional_hits=emotional_hits,
+        semantic_hits=semantic_hits,
+        lambda_t=lambda_t,
+        activation_floor=activation_floor,
+        recall_top_k=recall_top_k,
+    )
