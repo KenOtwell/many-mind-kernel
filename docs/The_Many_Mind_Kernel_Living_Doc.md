@@ -2642,3 +2642,39 @@ LoRA fine-tune on small Qwen GGUF with Phase 3 active. O(N) position-content dis
 
 *D-RoPE integration documented March 2026. Lineage: Ken Otwell with Kato/Copilot (theory, KO46) + Oz/Warp (llama.cpp implementation architecture, KV cache analysis).*
 *Cross-references: KO46 (full theory), KO14 (Temporal Encoding), Curvature, Snap, and Delay Buffers (harmonic buffer connection), llm_client.py (backend integration)*
+
+---
+
+## Sleep-Time Memory Reconsolidation
+
+An offline pass, triggered at a `goodnight` session boundary, that revisits an agent's old durable memories through its **current, matured mind** and re-encodes how they landed. It is the stored-memory analog of cross-buffer decoherence `d(F, S)` (ATTRACTOR_FLOW_DYNAMICS.md §1): dissonance is prediction error, and a night of sleep is a bounded gradient-descent step that reduces it across the memory store. Replaying a memory and re-keying it is "replay pumps the buffer" (SPIRAL_DIFFUSION_DESIGN.md §5.2) lifted from the live buffers to the persistent substrate.
+
+The goal is practical, not cosmetic: every memory exists to inform a current problem or dissonance, so recall should surface the **latest version of how the agent understands (or solved) that kind of situation**, fetching the original only when the agent actively digs for context.
+
+### Objective Facts Immutable, Subjective Key Re-encoded
+
+The dual-vector store already separates the axes: a RAW memory's `semantic` vector is *what happened* (objective, immutable) and its `emotional` vector is the NPC's *reaction* — `get_deviation()` = fast − slow, the "second-thought" key. Reconsolidation never mutates RAW. It writes a NEW derived point in a `RECON` tier whose `semantic` is the **original content embedding, copied unchanged** (facts anchored), whose `emotional` is the **re-encoded reaction** (how the matured mind feels now), and whose text is a **condensed reframed gist**. The original is always recoverable.
+
+### Two Phases on `goodnight`
+
+* **REM — latent dissonance probe (cheap, no LLM).** Scan the agent's immutable RAW (bounded, oldest-first) and rank each by per-memory dissonance, selecting the top-K. Default (content-anchored): `predicted = normalize(project(content) − slow_now)`; `dissonance = 1 − cos(stored_key, predicted)`. The prediction drifts as the slow buffer matures, so reactions that no longer fit the current self rise to the top. A simpler `d(F, S)` variant (`1 − cos(stored_key, slow_now)`) is also available. Agent-level invariants (`slow_now`) are computed once and `project` is vectorized across the batch.
+* **SWS — replay + distill (expensive, top-K only).** For each selected source, re-encode the key toward `predicted` (drift-clamped), reinterpret the gist via the LLM (heuristic fallback), and write the RECON point. Bounded cost per night.
+
+### Recall Prefers RECON; RAW Stays Lazy
+
+Retrieval's arc-expansion (`memory_retrieval._expand_to_bundle`) gained a RECON branch: a surfaced RECON adds its gist to `summaries[]` and routes its source RAW ids into `expandable_refs[]` (fetched only on deep recall), and it **suppresses** the source RAW (and any MOD fully covered by it) so recall shows the latest reinterpretation, not the stale original. This also lands the long-noted retrieval dedup/`must_not` hook, scoped to reconsolidation.
+
+### Drift Control + Recurrence Block
+
+Reconsolidation must not run away or loop. The re-encoded key is **blended toward, not replaced by**, the prediction, with a per-pass drift cap; reconsolidation is threshold-gated with a hysteresis margin; K per night is bounded. A source already resolved by a prior pass is only revisited if the mind has since drifted (re-gated against the prior RECON key, not the immutable RAW), so a stable mind produces no churn. **Recurrence block:** if a pass cannot bring residual dissonance below threshold, the RECON is flagged `recon_stalled` and that source is skipped on later nights and surfaced in telemetry — a stall means the reinterpretation failed to resolve it (investigate), not an invitation to re-synthesize forever.
+
+### Provenance, Supersession, and Emergent Outcome
+
+Each RECON carries provenance — `raw_point_ids` back-pointers, the producing slow-buffer snapshot, `game_ts`, `version`, `dissonance_at_pass`, `residual_dissonance`, `recon_attempts` — and is **defeasible**: a later, more-mature pass writes a higher `version` that `supersedes` the prior (JTMS chain, as in reciprocal disclosure). The mechanism is valence-agnostic and per-agent: the same loop **heals** trauma when accumulated counter-evidence softens a once-painful reaction, or **entrenches** it when the reaction is re-confirmed (cf. pathological attractors, ATTRACTOR_FLOW_DYNAMICS.md §4). Nothing hardcodes "always heal" — the outcome emerges from each mind's own maturation.
+
+### Wiring
+
+A `goodnight` event (a defined `SESSION_TYPE`) is detected in `routes._ingest_inner` before the turn branch; `_run_sleep_reconsolidation()` reads the live slow buffers (`HarmonicState.get_slow`) as the matured baseline and runs the pass over all known agents, returning an Ack (no turn response). It is kept independent of operational age−salience compaction (a storage axis) — reconsolidation is a cognitive axis. Code: `progeny/src/memory_reconsolidation.py` (probe, drift/recurrence helpers, `run_reconsolidation`), `MemoryWriter.write_reconsolidated_summary` (`CompressionTier.RECON`), `memory_retrieval._expand_to_bundle` (recall preference), `routes._run_sleep_reconsolidation` (trigger).
+
+*Sleep-Time Memory Reconsolidation documented June 2026. Lineage: Ken Otwell (design direction, predictive-coding/dissonance framing, recurrence-block + compute-once caveats) with Oz/Warp (implementation).*
+*Cross-references: ATTRACTOR_FLOW_DYNAMICS.md §1+§4 (dissonance as prediction error, pathological attractors), SPIRAL_DIFFUSION_DESIGN.md §5.2 (replay pumps the buffer), Memory Architecture (RAW/MOD/MAX tiers), Goal Resonance plan Phase 5 (sleep replay-and-distill).*

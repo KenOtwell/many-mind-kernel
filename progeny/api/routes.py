@@ -52,6 +52,7 @@ from progeny.src import acquaintance
 from progeny.src import valence
 from progeny.src import social_goals
 from progeny.src import disclosure
+from progeny.src import memory_reconsolidation
 from progeny.src.goal_pool import GoalPool, GoalState, seed_goals
 from progeny.src.goal_lifecycle import LifecycleStore
 from shared import embedding as shared_embedding
@@ -670,6 +671,74 @@ async def _propagate_disclosures(
 
 
 # ---------------------------------------------------------------------------
+# Sleep-time memory reconsolidation (goodnight trigger)
+# ---------------------------------------------------------------------------
+
+# Session event types that trigger an offline reconsolidation pass. `goodnight`
+# is the canonical sleep boundary; `waitstart` could be added later for naps.
+SLEEP_SESSION_TYPES: frozenset[str] = frozenset({"goodnight"})
+
+RECON_REINTERPRET_PROMPT = (
+    "You re-interpret an NPC's old memory through their matured understanding. "
+    "Rewrite it as ONE concise sentence capturing what the memory now means to "
+    "them and how they would understand or handle that kind of situation today "
+    "— the latest version of the lesson, useful when facing a similar problem. "
+    "Preserve the facts; invent nothing. Output only the sentence."
+)
+
+
+def _has_sleep_trigger(package: TickPackage) -> bool:
+    """True if this tick carries a sleep/goodnight session event."""
+    return any(e.event_type in SLEEP_SESSION_TYPES for e in package.events)
+
+
+async def _reconsolidation_reinterpreter(content: str) -> str:
+    """LLM reframing for the SWS phase.
+
+    Returns '' on failure so the orchestrator falls back to its heuristic gist.
+    Reuses the shared llm_client; the prompt asks for the matured, problem-
+    solving understanding of the memory (the latest version of the lesson).
+    """
+    try:
+        result = await llm_client.generate([
+            {"role": "system", "content": RECON_REINTERPRET_PROMPT},
+            {"role": "user", "content": content},
+        ])
+        return (result.content or "").strip()
+    except LLMError as exc:
+        logger.debug("Reconsolidation reinterpret LLM error (using fallback): %s", exc)
+        return ""
+
+
+async def _run_sleep_reconsolidation() -> None:
+    """Run the goodnight reconsolidation pass for every agent with live state.
+
+    Reads the live slow buffers as the matured baseline and writes RECON points
+    (the source RAW stays immutable). Independent of the turn pipeline and of
+    operational age-salience compaction. Non-fatal.
+    """
+    agent_ids = _harmonic_state.agent_ids
+    if not agent_ids:
+        logger.info("Goodnight: no agents with emotional state — reconsolidation skipped")
+        return
+    try:
+        report = await memory_reconsolidation.run_reconsolidation(
+            agent_ids,
+            _harmonic_state.get_slow,
+            writer=_memory_writer,
+            reinterpret_fn=_reconsolidation_reinterpreter,
+        )
+        logger.info(
+            "Goodnight reconsolidation: agents=%d reconsolidated=%d resolved=%d "
+            "stalled=%d blocked=%d",
+            report.scanned_agents, report.reconsolidated, report.resolved,
+            report.stalled, report.skipped_blocked,
+        )
+    except Exception:
+        logger.exception("Goodnight reconsolidation pass failed (non-fatal)")
+
+
+# ---------------------------------------------------------------------------
 # Dynamic modulator application on NPC registration
 # ---------------------------------------------------------------------------
 
@@ -859,6 +928,13 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
 
     # Step 1: Accumulate events, detect turn boundary
     turn_context = _accumulator.ingest(package)
+
+    # Sleep-time memory reconsolidation: a goodnight session event triggers an
+    # offline pass (REM probe -> SWS reinterpret) over each known agent's
+    # memories. Independent of the turn pipeline; returns an Ack (no turn).
+    if _has_sleep_trigger(package):
+        await _run_sleep_reconsolidation()
+        return AckResponse(tick_id=tick_id)
 
     if turn_context is None:
         logger.debug("Tick %s: data-only, accumulated %d events", tick_id, len(package.events))

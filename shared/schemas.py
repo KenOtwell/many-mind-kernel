@@ -122,6 +122,7 @@ class CompressionTier(str, Enum):
     RAW = "RAW"
     MOD = "MOD"
     MAX = "MAX"
+    RECON = "RECON"  # Sleep-time reconsolidated reinterpretation (derived, supersedable)
 
 
 class ExtractionLevel(str, Enum):

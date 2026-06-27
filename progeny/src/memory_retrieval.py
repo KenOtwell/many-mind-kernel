@@ -26,7 +26,6 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 from shared.constants import (
     COLLECTION_LORE,
     COLLECTION_NPC_MEMORIES,
-    EMOTIONAL_DIM,
 )
 
 from .qdrant_client import get_points_by_ids, search_vector
@@ -291,28 +290,60 @@ class MemoryRetriever:
         Expand anchor points into a full memory bundle.
 
         For each anchor:
-          - If it's a MOD arc summary → extract arc time bounds,
-            retrieve RAW points in that window.
-          - If it's a RAW point → include directly in recent[].
-          - If it's a MAX essence → include as expandable_ref.
+          - RECON reconsolidated summary → preferred: add the reframed gist to
+            summaries[] and route its source RAW ids into expandable_refs[]
+            (lazy — fetched only on deep recall).
+          - MOD arc summary → add to summaries[] and pull its RAW points into
+            recent[], unless a surfaced RECON already supersedes them.
+          - RAW point → include directly in recent[], unless a RECON covers it.
+          - MAX essence → include as expandable_ref.
+
+        Reconsolidation preference: a RECON summary supersedes its source RAW
+        (and any MOD fully covered by it), so recall surfaces the latest
+        reinterpretation while keeping the original RAW one hop away.
         """
         bundle = MemoryBundle(agent_id=agent_id)
         seen_raw_ids: set[str] = set()
 
+        # RAW ids covered by a surfaced RECON — collected first so suppression
+        # is independent of anchor order.
+        recon_covered: set[str] = set()
+        for anchor in anchors:
+            if anchor.tier == "RECON":
+                recon_covered.update(anchor.payload.get("raw_point_ids", []))
+
         for anchor in anchors:
             tier = anchor.tier
 
-            if tier == "MOD":
-                # Arc summary — add to summaries and expand raw points
+            if tier == "RECON":
+                # Prefer the reinterpreted gist; keep the source RAW lazy.
+                bundle.summaries.append({
+                    "text": anchor.content,
+                    "tier": "RECON",
+                    "arc_id": anchor.point_id,
+                    "score": anchor.score,
+                })
+                for rid in anchor.payload.get("raw_point_ids", []):
+                    if rid not in bundle.expandable_refs:
+                        bundle.expandable_refs.append(rid)
+
+            elif tier == "MOD":
+                # Arc summary — add to summaries and expand raw points.
+                raw_ids = anchor.payload.get("raw_point_ids", [])
+                # A MOD fully superseded by a RECON is dropped (no double-surfacing).
+                if raw_ids and all(rid in recon_covered for rid in raw_ids):
+                    continue
                 bundle.summaries.append({
                     "text": anchor.content,
                     "tier": "MOD",
                     "arc_id": anchor.point_id,
                     "score": anchor.score,
                 })
-                # Retrieve the underlying RAW points
-                raw_ids = anchor.payload.get("raw_point_ids", [])
-                unseen = [rid for rid in raw_ids if rid not in seen_raw_ids]
+                # Retrieve the underlying RAW points (skip any a RECON covers).
+                unseen = [
+                    rid for rid in raw_ids
+                    if rid not in seen_raw_ids and rid not in recon_covered
+                ]
                 if unseen:
                     raw_points = await get_points_by_ids(
                         COLLECTION_NPC_MEMORIES, unseen
@@ -326,6 +357,9 @@ class MemoryRetriever:
                         })
 
             elif tier == "RAW":
+                # Suppress a RAW a RECON already covers (kept lazy via refs).
+                if anchor.point_id in recon_covered:
+                    continue
                 if anchor.point_id not in seen_raw_ids:
                     seen_raw_ids.add(anchor.point_id)
                     bundle.recent.append({

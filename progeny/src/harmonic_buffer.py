@@ -504,6 +504,18 @@ class HarmonicState:
             return list(ZERO_SEMAGRAM)
         return (buf.fast - buf.slow).tolist()
 
+    def get_slow(self, agent_id: str) -> list[float]:
+        """Return an agent's slow EMA buffer — the personality / matured-mind baseline.
+
+        Returns ZERO_SEMAGRAM if the agent has no buffer yet. Sleep-time
+        reconsolidation uses this as the baseline to re-encode old reactions
+        against (the agent's past felt through its present self).
+        """
+        buf = self._buffers.get(agent_id)
+        if buf is None:
+            return list(ZERO_SEMAGRAM)
+        return buf.slow.tolist()
+
     def get_delta(self, agent_id: str) -> EmotionalDelta | None:
         """Return the last EmotionalDelta for an agent, or None.
 
