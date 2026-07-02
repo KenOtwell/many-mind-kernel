@@ -97,7 +97,8 @@ async def init(host: str | None = None, port: int | None = None) -> None:
     global _client
     _host = host or settings.qdrant.host
     _port = port or settings.qdrant.rest_port
-    _client = AsyncQdrantClient(host=_host, port=_port)
+    _client = AsyncQdrantClient(host=_host, port=_port,
+                                 check_compatibility=False)
     logger.info("Qdrant client initialized → %s:%d", _host, _port)
 
 
