@@ -83,12 +83,18 @@ class GenerateResult:
     token_logprobs: list[dict] | None = None
 
 
-async def generate(messages: list[dict[str, str]]) -> GenerateResult:
+async def generate(
+    messages: list[dict[str, str]],
+    n_keep: int = 0,
+) -> GenerateResult:
     """
     Send a chat completion request to the LLM server.
 
     Args:
         messages: Chat completion messages array (system + user messages).
+        n_keep:   Tokens to pin in KV cache (system + stable Layer 1a prefix).
+                  Guaranteed not to be evicted under slot pressure.
+                  0 = default (opportunistic prefix reuse only).
 
     Returns:
         GenerateResult with response text and timing metadata.
@@ -102,12 +108,11 @@ async def generate(messages: list[dict[str, str]]) -> GenerateResult:
         "temperature": profile.temperature,
         "top_p": profile.top_p,
         "stream": False,
-        # Request pre-sampling token log probabilities for uncertainty
-        # estimation. llama.cpp returns log(softmax(logits)) per token —
-        # the model's genuine confidence before sampling distorts it.
         "logprobs": True,
         "top_logprobs": 3,
     }
+    if n_keep > 0:
+        payload["n_keep"] = n_keep
     if profile.supports_json_mode:
         payload["response_format"] = {"type": "json_object"}
 

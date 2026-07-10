@@ -22,6 +22,7 @@ from progeny.src.fact_pool import NpcBitIndex
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from progeny.src.fact_pool import FactPool
+    from mindcore.harmonic_buffer import HarmonicState
 
 # Dialogue event types eligible for behaviour adoption
 _DIALOGUE_TYPES: frozenset[str] = frozenset({"chat", "_speech"})
@@ -30,6 +31,21 @@ _DIALOGUE_TYPES: frozenset[str] = frozenset({"chat", "_speech"})
 _NON_AGENT_IDS: frozenset[str] = frozenset({"Player", ""})
 
 logger = logging.getLogger(__name__)
+
+
+def _felt_vector(
+    harmonic_state: "HarmonicState",
+    agent_id: str,
+) -> list[float] | None:
+    """Extract the agent's current fast-buffer as a compact felt vector.
+
+    Returns None if the agent has no state yet or is at zero (avoids
+    polluting entries with uninformative all-zero vectors).
+    """
+    fast = harmonic_state.get_semagram(agent_id)
+    if not any(abs(v) > 1e-6 for v in fast):
+        return None
+    return [round(v, 3) for v in fast]
 
 
 @dataclass
@@ -262,88 +278,115 @@ class EventAccumulator:
         self._pending_player_input = None
         return context
 
-    def record_agent_output(self, agent_id: str, utterance: str) -> None:
-        """
-        Record LLM-generated output into agent's dialogue history and
+    def record_agent_output(
+        self,
+        agent_id: str,
+        utterance: str,
+        harmonic_state: "HarmonicState | None" = None,
+    ) -> None:
+        """Record LLM-generated output into agent's dialogue history and
         the shared group timeline.
 
         Behavior adoption: adopted as the agent's own output (role=assistant).
-        On the next turn, the agent sees this as something it said.
-        Group timeline: recorded as shared event (everyone present heard it).
+        felt_at_speaking carries the speaker's 9d fast buffer at output time,
+        encoding the emotional state from which the utterance emerged. This
+        is the self-perspective: how it felt to say this.
         """
         buf = self._get_or_create_buffer(agent_id)
-        buf.dialogue_history.append({"role": "assistant", "content": utterance})
-        # Group timeline — everyone present heard this NPC speak
+        entry: dict = {"role": "assistant", "content": utterance}
+        if harmonic_state is not None:
+            felt = _felt_vector(harmonic_state, agent_id)
+            if felt:
+                entry["felt_at_speaking"] = felt
+        buf.dialogue_history.append(entry)
+        # Group timeline — everyone present heard this NPC speak.
+        # No felt state here: this is the objective record, not the
+        # speaker's subjective experience.
         self._group_memory.verbatim.append(
             {"role": agent_id, "content": utterance}
         )
 
-    def record_npc_speech(self, agent_id: str, text: str) -> None:
-        """
-        Record canned NPC speech (from _speech events) into dialogue history.
+    def record_npc_speech(
+        self,
+        agent_id: str,
+        text: str,
+        harmonic_state: "HarmonicState | None" = None,
+    ) -> None:
+        """Record canned NPC speech (from _speech events) into dialogue history.
 
-        Per the Behavior Adoption design (Living Doc §Event Accumulator):
-        externally-generated NPC dialogue — CHIM canned lines, RDO replies,
-        vanilla ambient — is adopted as the agent's own output. The agent
-        cannot distinguish "I said this" from "the game made me say this";
-        on the next turn it sees the line in its history and rationalises
-        continuity from there.
-
-        Same shape as record_agent_output: role=assistant in the speaker's
-        private history, role=<agent_id> in the group timeline. Text is
-        the clean speech field from SpeechData, not the JSON envelope.
+        Behavior adoption: externally-generated NPC dialogue is adopted as
+        the agent's own output. felt_at_speaking is included when harmonic_state
+        is available, giving the canned line an emotional fingerprint.
         """
         buf = self._get_or_create_buffer(agent_id)
-        buf.dialogue_history.append({"role": "assistant", "content": text})
+        entry: dict = {"role": "assistant", "content": text}
+        if harmonic_state is not None:
+            felt = _felt_vector(harmonic_state, agent_id)
+            if felt:
+                entry["felt_at_speaking"] = felt
+        buf.dialogue_history.append(entry)
         self._group_memory.verbatim.append(
             {"role": agent_id, "content": text}
         )
 
-    def record_player_input(self, text: str) -> None:
+    def record_player_input(
+        self,
+        text: str,
+        harmonic_state: "HarmonicState | None" = None,
+    ) -> None:
         """Record player input into dialogue history for NPCs in earshot.
 
-        Uses the preceding _speech event's listener + companions[] to
-        determine who can hear the player. The addressee gets direct
-        speech; companions in earshot get overheard attribution. NPCs
-        outside earshot get nothing — if nobody's there to hear you,
-        nobody remembers.
+        Each NPC that heard the player gets a private entry with felt_at_receiving
+        — how it landed for THEM specifically (the other-perspective). NPCs outside
+        earshot get nothing.
 
-        Group timeline records all player speech regardless of earshot
-        (the canonical fact layer — it happened, even if not everyone heard).
-
-        Falls back to all active NPCs if no _speech context is available
-        (e.g. typed input without a preceding speech event).
+        Player input is NOT recorded in _group_memory.verbatim: it already appears
+        verbatim in the payload's player_input field, and per-NPC framing belongs
+        in private Layer 2, not the shared objective record. Keeping group_memory
+        as NPC-speech-only makes shared_recent grow more slowly and more cacheable.
         """
-        # Group timeline — canonical record (fact layer, always recorded)
-        self._group_memory.verbatim.append(
-            {"role": "Player", "content": text}
-        )
 
-        # Per-NPC dialogue history — earshot-filtered (experience layer)
+        # Per-NPC dialogue history — earshot-filtered (experience layer).
+        # Each entry carries felt_at_receiving: how the player's words landed
+        # for that specific NPC (their harmonic state at reception time).
         ctx = self._speech_earshot
         if ctx is not None:
             addressee = ctx.get("listener", "")
             companions = ctx.get("companions", [])
 
-            # Addressee hears the player directly
+            # Addressee hears the player directly.
             if addressee and addressee not in _NON_AGENT_IDS:
                 buf = self._get_or_create_buffer(addressee)
-                buf.dialogue_history.append({"role": "user", "content": text})
+                entry: dict = {"role": "user", "content": text}
+                if harmonic_state is not None:
+                    felt = _felt_vector(harmonic_state, addressee)
+                    if felt:
+                        entry["felt_at_receiving"] = felt
+                buf.dialogue_history.append(entry)
 
-            # Companions in earshot overheard it
+            # Companions in earshot overheard it.
             for comp in companions:
                 if comp and comp not in _NON_AGENT_IDS and comp != addressee:
                     buf = self._get_or_create_buffer(comp)
                     target = addressee or "someone"
-                    buf.dialogue_history.append(
-                        {"role": "user", "content": f"Player [to {target}]: {text}"}
-                    )
+                    entry = {"role": "user",
+                             "content": f"Player [to {target}]: {text}"}
+                    if harmonic_state is not None:
+                        felt = _felt_vector(harmonic_state, comp)
+                        if felt:
+                            entry["felt_at_receiving"] = felt
+                    buf.dialogue_history.append(entry)
         else:
-            # No speech context — fallback to all active NPCs (typed input)
+            # No speech context — fallback to all active NPCs (typed input).
             for agent_id in self._active_npc_ids:
                 if agent_id not in _NON_AGENT_IDS:
                     buf = self._get_or_create_buffer(agent_id)
-                    buf.dialogue_history.append({"role": "user", "content": text})
+                    entry = {"role": "user", "content": text}
+                    if harmonic_state is not None:
+                        felt = _felt_vector(harmonic_state, agent_id)
+                        if felt:
+                            entry["felt_at_receiving"] = felt
+                    buf.dialogue_history.append(entry)
 
     def _extract_agent_ids(self, event: TypedEvent) -> list[tuple[str, str]]:
         """

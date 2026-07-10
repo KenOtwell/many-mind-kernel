@@ -313,17 +313,24 @@ class TestDialogueHistory:
         acc.record_player_input("Talking to myself")
         assert "Player" not in acc._agent_buffers
 
-    def test_record_player_input_always_records_to_group_timeline(self):
-        """Group timeline records player speech regardless of earshot."""
+    def test_record_player_input_not_in_group_timeline(self):
+        """Player input is earshot-filtered into per-NPC dialogue_history only.
+        group_memory (shared_recent) is NPC-speech-only for cacheability.
+        """
         acc = EventAccumulator()
         acc._speech_earshot = {
             "speaker": "Player", "listener": "Lydia",
             "speech": "Hello", "companions": [],
         }
+        acc._get_or_create_buffer("Lydia")
         acc.record_player_input("Secret to Lydia")
-        # Group timeline always gets it (fact layer)
-        assert len(acc._group_memory.verbatim) == 1
-        assert acc._group_memory.verbatim[0]["role"] == "Player"
+        # Group timeline must NOT contain player input
+        assert len(acc._group_memory.verbatim) == 0
+        # But Lydia's private history does
+        assert any(
+            e["content"] == "Secret to Lydia"
+            for e in acc._agent_buffers["Lydia"].dialogue_history
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -389,13 +396,18 @@ class TestPresenceChanges:
 
 
 class TestGroupMemory:
-    def test_player_input_recorded_in_group_memory(self):
+    def test_player_input_not_in_group_memory(self):
+        """Player input is in per-NPC dialogue_history only, not group_memory.
+        The group timeline (shared_recent) is NPC-speech-only for cacheability.
+        """
         acc = EventAccumulator()
         acc._active_npc_ids = ["Lydia"]
         acc.record_player_input("Watch out!")
-        assert len(acc._group_memory.verbatim) == 1
-        assert acc._group_memory.verbatim[0]["role"] == "Player"
-        assert acc._group_memory.verbatim[0]["content"] == "Watch out!"
+        assert len(acc._group_memory.verbatim) == 0
+        # But it IS in Lydia's private dialogue_history (fallback: no speech ctx)
+        lydia_history = acc._agent_buffers.get("Lydia", None)
+        assert lydia_history is not None
+        assert any(e["content"] == "Watch out!" for e in lydia_history.dialogue_history)
 
     def test_agent_output_recorded_in_group_memory(self):
         acc = EventAccumulator()
@@ -405,45 +417,48 @@ class TestGroupMemory:
         assert acc._group_memory.verbatim[0]["content"] == "I'll handle this!"
 
     def test_group_memory_accumulates_across_turns(self):
-        """Group timeline persists across turn flushes."""
+        """Group timeline persists across turn flushes (NPC speech only)."""
         acc = EventAccumulator()
         acc._active_npc_ids = ["Lydia"]
-        acc.record_player_input("Hello")
-        acc.record_agent_output("Lydia", "Greetings.")
+        acc.record_player_input("Hello")   # NOT in group_memory
+        acc.record_agent_output("Lydia", "Greetings.")  # IS in group_memory
         pkg = make_turn_package("How are you?", active_npc_ids=["Lydia"])
         ctx = acc.ingest(pkg)
-        assert len(ctx.group_memory.verbatim) >= 2
+        assert len(ctx.group_memory.verbatim) >= 1
         roles = [e["role"] for e in ctx.group_memory.verbatim]
-        assert "Player" in roles
         assert "Lydia" in roles
+        assert "Player" not in roles  # Player input is NOT in group timeline
 
     def test_group_memory_in_turn_context(self):
+        """TurnContext has group_memory attribute; player input alone leaves it empty."""
         acc = EventAccumulator()
         acc._active_npc_ids = ["Lydia"]
-        acc.record_player_input("Tell me about Whiterun")
+        acc.record_player_input("Tell me about Whiterun")  # NOT in group_memory
+        acc.record_agent_output("Lydia", "It is the finest city.")  # IS in group_memory
         pkg = make_turn_package("What's your name?", active_npc_ids=["Lydia"])
         ctx = acc.ingest(pkg)
         assert hasattr(ctx, "group_memory")
         assert len(ctx.group_memory.verbatim) >= 1
+        assert ctx.group_memory.verbatim[0]["role"] == "Lydia"
 
     def test_session_reset_clears_group_memory(self):
         acc = EventAccumulator()
-        acc._active_npc_ids = ["Lydia"]
-        acc.record_player_input("Hello")
+        acc.record_agent_output("Lydia", "Hello.")
         assert len(acc._group_memory.verbatim) == 1
         pkg = TickPackage(events=[_init_event()], active_npc_ids=[])
         acc.ingest(pkg)
         assert len(acc._group_memory.verbatim) == 0
 
     def test_multiple_agents_all_appear_in_group_timeline(self):
-        """All speakers show up in the shared timeline."""
+        """All NPC speakers show up in the shared timeline; player does not."""
         acc = EventAccumulator()
         acc._active_npc_ids = ["Lydia", "Belethor"]
-        acc.record_player_input("Hello everyone")
+        acc.record_player_input("Hello everyone")   # NOT in group_memory
         acc.record_agent_output("Lydia", "Greetings.")
         acc.record_agent_output("Belethor", "Do come back.")
         roles = [e["role"] for e in acc._group_memory.verbatim]
-        assert roles == ["Player", "Lydia", "Belethor"]
+        assert roles == ["Lydia", "Belethor"]
+        assert "Player" not in roles
 
 
 # ---------------------------------------------------------------------------

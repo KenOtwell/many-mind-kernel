@@ -159,7 +159,7 @@ class TestPromptPassedToLLM:
         mock_response = _mock_llm_response(["Lydia"])
         captured_messages = []
 
-        async def capture_generate(messages):
+        async def capture_generate(messages, **kwargs):
             captured_messages.extend(messages)
             return GenerateResult(content=mock_response)
 
@@ -183,7 +183,7 @@ class TestPromptPassedToLLM:
         pkg = make_turn_package("Hi", active_npc_ids=["Lydia", "Belethor"])
         captured_calls: list[list[dict]] = []
 
-        async def capture_generate(messages):
+        async def capture_generate(messages, **kwargs):
             captured_calls.append(list(messages))
             # Return response for whichever agent is in this group
             json_part = messages[1]["content"].split("\n\n")[0]
@@ -341,7 +341,7 @@ class TestRemindingQueue:
         mock_response = _mock_llm_response(["Lydia"])
         captured_prompts = []
 
-        async def capture(messages):
+        async def capture(messages, **kwargs):
             captured_prompts.append(messages)
             return GenerateResult(content=mock_response)
 
@@ -399,7 +399,7 @@ class TestRemindingQueue:
         mock_response = _mock_llm_response(["Lydia"])
         captured_prompts = []
 
-        async def capture(messages):
+        async def capture(messages, **kwargs):
             captured_prompts.append(messages)
             return GenerateResult(content=mock_response)
 
@@ -448,7 +448,7 @@ class TestRemindingQueue:
         # Second turn: queue should be fresh (no Qdrant = empty retrieval)
         captured_prompts = []
 
-        async def capture(messages):
+        async def capture(messages, **kwargs):
             captured_prompts.append(messages)
             return GenerateResult(content=mock_response)
 

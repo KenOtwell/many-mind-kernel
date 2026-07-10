@@ -830,15 +830,16 @@ async def _run_group(
     all_active_npc_ids: list[str],
     emotional_deltas: dict | None = None,
     memory_bundles: dict[str, MemoryBundle] | None = None,
+    stable_prefix: str | None = None,
+    n_keep: int = 0,
 ) -> tuple[list[AgentResponse], GenerateResult | None]:
     """
     Execute the full pipeline for one dispatch group.
 
-    Returns (agent_responses, generate_result). On LLM error, returns
-    empty responses and None result (graceful degradation per group).
+    stable_prefix: pre-serialized Layer 1a JSON (built once, shared across groups).
+    n_keep: tokens to pin in KV cache (system + Layer 1a).
+    Returns (agent_responses, generate_result). On LLM error returns empty + None.
     """
-    # Compact self-identity per agent (Phase 6a) — the agent's own Tier-0/1
-    # block carries its self-concept; absent/sentinel kernels contribute nothing.
     identities: dict[str, Any] = {}
     for scheduled in group.agents:
         kernel = identity_kernel.get(scheduled.agent_id)
@@ -855,10 +856,11 @@ async def _run_group(
         memory_bundles=memory_bundles,
         speech_earshot=_accumulator._speech_earshot,
         identities=identities or None,
+        stable_prefix=stable_prefix,
     )
 
     try:
-        result = await llm_client.generate(messages)
+        result = await llm_client.generate(messages, n_keep=n_keep)
     except LLMError as exc:
         logger.error("Group %s: LLM error — %s", group.label, exc)
         # Graceful degradation: empty responses for this group
@@ -956,8 +958,10 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
             tick_id, len(prior_remindings),
         )
 
-    # Record player input in dialogue history for all active agents
-    _accumulator.record_player_input(turn_context.player_input)
+    # Record player input in dialogue history for all active agents.
+    # Pass harmonic_state so each NPC's felt_at_receiving is captured.
+    _accumulator.record_player_input(
+        turn_context.player_input, harmonic_state=_harmonic_state)
 
     # Temporal decay: cool all agent buffers proportional to elapsed time.
     # Agents that haven't received events since last turn settle naturally.
@@ -1138,10 +1142,22 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
         tick_id, len(groups), [g.label for g in groups],
     )
 
+    # Pre-serialize the stable Layer 1a prefix ONCE before the dispatch loop.
+    # All groups share identical Layer 1a bytes so the KV cache from group 1's
+    # LLM call covers it for groups 2–N. Compute n_keep to pin the prefix.
+    urg = prompt_formatter._urgency(emotional_deltas)
+    stable_prefix = prompt_formatter.build_shared_prefix(
+        turn_context, turn_context.active_npc_ids, _fact_pool, urg)
+    # n_keep = system message + stable prefix (4 chars/token heuristic)
+    _n_keep = (len(prompt_formatter.SYSTEM_PROMPT) + len(stable_prefix)) // 4
+    logger.debug("Tick %s: stable_prefix=%d chars, n_keep=%d",
+                 tick_id, len(stable_prefix), _n_keep)
+
     # Step 4: Parallel execution — all groups run concurrently
     group_tasks = [
         _run_group(group, turn_context, turn_context.active_npc_ids,
-                   emotional_deltas, memory_bundles)
+                   emotional_deltas, memory_bundles,
+                   stable_prefix=stable_prefix, n_keep=_n_keep)
         for group in groups
     ]
     group_results = await asyncio.gather(*group_tasks)
@@ -1182,7 +1198,8 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
 
     for resp in all_responses:
         if resp.utterance:
-            _accumulator.record_agent_output(resp.agent_id, resp.utterance)
+            _accumulator.record_agent_output(
+                resp.agent_id, resp.utterance, harmonic_state=_harmonic_state)
             # Write utterance to Qdrant, set utterance_key for Falcon
             if qdrant_cli is not None:
                 try:
