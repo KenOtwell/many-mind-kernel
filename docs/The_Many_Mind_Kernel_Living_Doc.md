@@ -1242,6 +1242,76 @@ Same pipeline as emotional processing, applied to task execution:
 * `is_dead:<name>` — named NPC is dead
 * `time_elapsed:<seconds>` — enough time has passed (for wait goals)
 
+### Player Intent Extraction (not yet built — wire up when building goal_planner.py)
+
+Before routing player input through `record_player_input()`, a lightweight pre-pass classifies the utterance into an intent taxonomy and registers any delegation or conditional commitment as a runtime `GoalNode` on the designated agent's pool. This bridges the gap between what the player says and what the goal resonance system can act on.
+
+**Intent taxonomy:**
+* `command` — direct action for the addressed NPC ("Attack him!") → `actions[]` fires immediately via existing path, no goal needed
+* `delegation` — task assigned to a named NPC with steps ("Lydia, go to town and round up more fighters") → decompose into GoalQueue entry; see goal_planner.py
+* `conditional` — commitment on behalf of a named NPC with a trigger ("Lydia will attack if he moves") → register as runtime GoalNode with `trigger_cues` from the condition text
+* `constraint` — budget/limit on an existing goal ("don't spend more than X gold") → attach as inhibition to the nearest open goal; see Constraint Inhibition below
+* `warning` — emotional nudge only ("Watch out!") → no goal, handled by existing emotional pipeline
+* `social` / `question` — no goal, handled by existing turn pipeline
+
+**Conditional intent → GoalNode registration:**
+For `conditional` intents, extract `{agent, action, target, condition_text}` — via structured LLM call (cheap, one call before main dispatch) or regex/template matcher for common forms. Embed `condition_text` as `trigger_cues` and register as a runtime `GoalNode` with `provenance="player_delegation"` on the named agent's pool:
+```python
+GoalNode(
+    name="conditional_{action}_{target}",
+    statement="The player said I would {action} if {condition}. If {condition} is met I should act.",
+    trigger_cues=condition_text,          # embedded → semantic trigger
+    affect_signature="committed readiness, alert aggression",
+    success_predicate=condition_as_predicate,
+    provenance="player_delegation",
+)
+```
+Because `score_goals()` runs every turn against the live scene percept, when the scene event description matches `trigger_cues` (semantically, not symbolically), the goal activates, nudges the harmonic buffer, and the action surfaces in the NPC's response. **No LLM memory across turns required** — the goal pool is persistent in-process.
+
+This same mechanism handles:
+* Conditional threats ("attack if he moves") — single-step GoalNode
+* Delegated watch tasks ("tell me if anyone enters") — single-step GoalNode with `trigger_cues = "someone enters, door opens, newcomer"`
+* Standing orders ("protect the jarl at all costs") — persistent GoalNode that never satisfies
+
+**New Progeny module: `player_intent.py`**
+* Runs before `record_player_input()` in `_ingest_inner()`
+* Classifies player utterance into intent taxonomy (fast: template match + optional small LLM call)
+* For `delegation` intents: emits GoalQueue entry for `goal_planner.py` to execute
+* For `conditional` intents: registers runtime GoalNode on the named agent's pool
+* For `constraint` intents: attaches inhibition to the nearest open goal (see Constraint Inhibition)
+* Returns `PlayerIntent` dataclass with intent type + structured fields
+* Non-fatal: if classification fails, falls back to normal unstructured routing
+
+### Goal Lifecycle State Machine (not yet built — required for reliable multi-step sequencing)
+
+Currently all GoalNodes are `PRIMED` — active simultaneously. This means step ordering in multi-step delegations is semantic only (the LLM infers sequence from context). Under urgency/tier scaling, context gets compressed and ordering breaks down.
+
+**Required lifecycle:** `LATENT → PRIMED → CANDIDATE → COMMITTED → SATISFIED → EXPIRED`
+
+* `PRIMED` — standing pull (resonance scoring contributes nudge each turn)
+* `CANDIDATE` — activation crossed floor AND preconditions met (ready to execute)
+* `COMMITTED` — agent has begun execution (prevents competing goals from preempting mid-step)
+* `SATISFIED` — done_when predicate confirmed; triggers downstream enables[] goals to transition LATENT→PRIMED
+* `EXPIRED` — timed out or explicitly abandoned
+
+**Why this unblocks multi-step goals:** `requires` and `enables` fields on GoalNode already support the DAG. The missing piece is the transition trigger: `travel_to_town` needs to reach `SATISFIED` before `recruit_fighters` transitions `LATENT→PRIMED`. Without lifecycle state, both are `PRIMED` and fire simultaneously.
+
+**Implementation note:** `goal_planner.py` manages lifecycle transitions. The affordance matcher advances `CANDIDATE → COMMITTED` when a step fires. The `done_when` predicate check advances `COMMITTED → SATISFIED`. The `requires` graph propagates `SATISFIED` downstream.
+
+### Constraint Inhibition (not yet built — Phase 4 / Kato's inhibition matrix)
+
+Constraints like "don't spend more than X gold" are **inhibitions on goal execution**, not goals themselves. The current architecture has no mechanism for them — they live only as text in dialogue history and fall out as context compresses.
+
+**What's needed:**
+* A `ConstraintNode` type: `{agent, constraint_text, limit_type, limit_value, attached_to_goal}` 
+* Numeric state tracking: `{spent_so_far: float}` updated each tick as relevant actions fire
+* The goal-affordance matcher checks active constraints before emitting a step command
+* Constraint violation → step blocked + LLM replanning ("I can't hire another fighter without exceeding your budget")
+
+**Connection to inhibition matrix (Kato Phase 4):** Constraints are the simplest case of the broader inhibition graph — rules that suppress goal steps rather than attract toward them. The `ConstraintNode` schema should be compatible with the eventual inhibition matrix design.
+
+**Interim approach (before ConstraintNode is built):** For constraints expressed in player input, `player_intent.py` appends a structured constraint tag to the GoalQueue entry: `{constraint: "gold_spent <= X"}`. `goal_planner.py` checks this field before emitting each step. The LLM also sees the constraint in its state_history for planning. Fragile under compression but much better than current (constraint only in verbatim history).
+
 ## Curvature-Driven Priority & Context Gating
 
 The system has no "combat mode" flag. Curvature and snap — the 1st and 2nd derivatives of emotional state tracked by `harmonic_buffer.py` — ARE the priority signals. Curvature shapes the prompt (how much context to include). Snap detects event boundaries (when to stash/flush). This section documents how both shape the pipeline from timing through prompt construction to post-danger recovery.
