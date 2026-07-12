@@ -170,6 +170,27 @@ CURVATURE_TRUNCATION_LOW = 0.1    # Below this → full prompt
 CURVATURE_TRUNCATION_HIGH = 0.5   # Above this → maximum truncation
 
 
+def build_shared_prefix(
+    turn_context: TurnContext,
+    present_ids: list[str],
+    fact_pool: FactPool | None = None,
+    urgency: float = 0.0,
+) -> str:
+    """Pre-serialize the stable Layer 1a prefix as a JSON string.
+
+    Called ONCE per turn in routes.py before the dispatch loop. The result
+    is byte-identical across every NPC in the batch, so NPC1's LLM call fills
+    the KV cache for this portion and NPCs 2–N reuse it at near-zero cost.
+
+    Layer 1a contains: location, shared_history (compressed tier),
+    shared_anchors (keyword tier), shared_knowledge (FactPool shared facts),
+    lore. All of these grow monotonically and never change within a tick.
+    """
+    stable = _build_group_context_stable(
+        turn_context, present_ids, fact_pool, urgency)
+    return json.dumps({"group_context_stable": stable}, indent=None)
+
+
 def build_prompt(
     turn_context: TurnContext,
     roster: list[ScheduledAgent],
@@ -180,30 +201,36 @@ def build_prompt(
     memory_bundles: dict[str, MemoryBundle] | None = None,
     speech_earshot: dict | None = None,
     identities: dict[str, Any] | None = None,
+    stable_prefix: str | None = None,
 ) -> list[dict[str, str]]:
+    """Build the 2-message chat completion array for a dispatch group.
+
+    If stable_prefix is provided (pre-serialized Layer 1a from
+    build_shared_prefix()), it is prepended to the user content and
+    Layer 1a is not rebuilt. This enables KV prefix cache reuse across
+    NPCs in the same dispatch batch.
+
+    Returns [{"role": "system", "content": ...}, {"role": "user", "content": ...}]
     """
-    Build the 2-message chat completion array for a dispatch group.
-
-    Returns a list of message dicts ready for the LLM:
-    [{"role": "system", "content": ...}, {"role": "user", "content": ...}]
-
-    Data payload and instruction are combined into a single user message
-    to satisfy chat templates that require strict user/assistant alternation
-    (e.g. Mistral NeMo).
-
-    Args:
-        turn_context: Accumulated context for this turn.
-        roster: Agents in THIS dispatch group (may be a subset of all active).
-        all_active_npc_ids: Full list of active NPCs this turn (for cross-agent
-            awareness in partitioned calls). If None, derived from roster.
-        harmonic_state: Live emotional state container. If None, uses ZERO_SEMAGRAM.
-        emotional_deltas: Pre-captured deltas per agent. If None, no delta in prompt.
-    """
-    # Message 2: data payload + instruction — rebuilt fresh every turn
     data_payload = _build_data_payload(
         turn_context, roster, all_active_npc_ids, harmonic_state, emotional_deltas,
         fact_pool, memory_bundles, speech_earshot, identities,
+        skip_stable=(stable_prefix is not None),
     )
+
+    if stable_prefix:
+        # Merge stable (pre-serialized) back into the payload dict so the
+        # combined output is a single valid JSON object. This keeps the LLM
+        # prefix identical across all NPCs in the batch (same stable bytes)
+        # while producing parseable output for tests and logging.
+        try:
+            stable_data = json.loads(stable_prefix)
+            # Merge stable group_context_stable into group_context
+            if "group_context_stable" in stable_data and "group_context" in data_payload:
+                merged_gc = {**stable_data["group_context_stable"], **data_payload["group_context"]}
+                data_payload = {**data_payload, "group_context": merged_gc}
+        except (json.JSONDecodeError, TypeError):
+            pass  # Fall back to separate if parsing fails
     user_content = json.dumps(data_payload, indent=None) + "\n\n" + INSTRUCTION_PROMPT
 
     return [
@@ -244,33 +271,31 @@ def _build_data_payload(
     memory_bundles: dict[str, MemoryBundle] | None = None,
     speech_earshot: dict | None = None,
     identities: dict[str, Any] | None = None,
+    skip_stable: bool = False,
 ) -> dict[str, Any]:
     """Assemble the JSON data payload for message 2.
 
-    Three-layer structure with curvature-driven truncation:
-      group_context (Layer 1): shared scene. Truncated under high urgency
-          (strip history to anchors, drop lore, keep display + events).
-      agents[] (Layer 2): private per-agent blocks. Truncated under high
-          urgency (drop deep history, keep recent events + dynamics).
-      player_input: the current player utterance/action.
-
-    Truncation is about cognitive focus, not speed. High curvature means
-    the agent should think about the RIGHT things (tactical situation),
-    not about everything (social history, lore, old memories).
+    When skip_stable=True, Layer 1a (stable history) is omitted from the
+    returned dict because it has already been serialized as the shared prefix
+    by build_shared_prefix(). Only Layer 1b (tick-fresh) + agents + player_input
+    are included, keeping each NPC's per-dispatch payload minimal.
     """
     roster_ids = [a.agent_id for a in roster]
     present_ids = all_active_npc_ids if all_active_npc_ids is not None else roster_ids
 
-    # Urgency: 0.0 = calm (full prompt), 1.0 = crisis (maximum truncation)
     urg = _urgency(emotional_deltas)
-
-    # Addressee detection — who is the player talking to?
     addressee_id = _resolve_addressee(ctx.player_input, roster, speech_earshot)
 
-    # --- Layer 1: Group context (shared by all present NPCs) ---
-    group_context = _build_group_context(
-        ctx, present_ids, harmonic_state, emotional_deltas, fact_pool, urg,
+    # --- Layer 1: Group context ---
+    # 1a (stable) is skipped when pre-serialized as shared prefix.
+    # 1b (tick-fresh) is always included — it changes each turn.
+    group_context = _build_group_context_fresh(
+        ctx, present_ids, harmonic_state, emotional_deltas, urgency=urg,
     )
+    if not skip_stable:
+        # Inline stable layer when no shared prefix provided (single-NPC or fallback)
+        stable = _build_group_context_stable(ctx, present_ids, fact_pool, urg)
+        group_context = {**stable, **group_context}
 
     # --- Layer 2: Private agent blocks ---
     agents = []
@@ -304,71 +329,72 @@ def _build_data_payload(
 
 
 # ---------------------------------------------------------------------------
-# Layer 1: Group context — shared scene visible to all present NPCs
+# Layer 1: Group context — split into stable (1a) and tick-fresh (1b)
 # ---------------------------------------------------------------------------
 
-def _build_group_context(
+def _build_group_context_stable(
     ctx: TurnContext,
     present_ids: list[str],
-    harmonic_state: "HarmonicState | None" = None,
-    emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
     fact_pool: FactPool | None = None,
     urgency: float = 0.0,
 ) -> dict[str, Any]:
-    """Build the shared group context (Layer 1) with curvature truncation.
+    """Layer 1a — stable prefix, identical for every NPC this tick and
+    often identical to the previous tick.
 
-    Urgency 0.0 (calm): full history, lore, shared knowledge, display.
-    Urgency 1.0 (crisis): anchors only + display + tick events.
-    The gradient is continuous — not a binary switch.
-
-    Always included regardless of urgency: location, present_npcs,
-    group_display (the room's emotional state), shared_events (what
-    just happened this tick). These are the tactical essentials.
+    Fields: location, shared_history (compressed tier), shared_anchors
+    (keyword tier), shared_knowledge (FactPool shared facts), lore.
+    Grows monotonically; never changes within a tick. Pre-serialized once
+    and shared across all NPCs in the dispatch batch via build_shared_prefix().
     """
-    group: dict[str, Any] = {
-        "location": _get_location(ctx),
-        "present_npcs": present_ids,
-    }
+    group: dict[str, Any] = {"location": _get_location(ctx)}
 
-    # Group timeline — truncated by urgency.
-    # Calm: full depth (verbatim + compressed + anchors).
-    # Crisis: anchors only (SVO recognition triggers, minimal tokens).
     gm = ctx.group_memory
-    if urgency < 0.5:
-        # Calm to moderate: include verbatim and compressed
-        if gm.verbatim:
-            group["shared_recent"] = gm.verbatim[-10:]
-        if gm.compressed:
-            group["shared_history"] = gm.compressed[-10:]
-    # Anchors always included (cheap, ~15 tokens each)
+    if urgency < 0.5 and gm.compressed:
+        group["shared_history"] = gm.compressed[-10:]
     if gm.keywords:
         group["shared_anchors"] = gm.keywords[-10:]
 
-    # Shared tick events — always included (what just happened)
-    shared_events = [e.raw_data for e in ctx.world_events[-10:] if e.raw_data]
-    if shared_events:
-        group["shared_events"] = shared_events
-
-    # Shared facts and lore — dropped under high urgency.
-    # Lore and background knowledge are irrelevant during a crisis;
-    # the agent should focus on the immediate situation.
     if urgency < 0.7 and fact_pool is not None:
         all_present = ["Player"] + list(present_ids)
         shared_facts = fact_pool.query_shared(all_present, limit=15)
         if shared_facts:
             group["shared_knowledge"] = [f.content for f in shared_facts]
-
         if urgency < 0.3:
-            # Only include lore when fully calm
             lore_facts = fact_pool.query("Player", category="lore", limit=10)
             if lore_facts:
                 group["lore"] = [f.content for f in lore_facts]
 
-    # Group emotional display — always included. This IS the tactical
-    # information during a crisis: who looks scared, who's ready to fight.
-    group_display = _build_group_display(
-        present_ids, harmonic_state, emotional_deltas,
-    )
+    return group
+
+
+def _build_group_context_fresh(
+    ctx: TurnContext,
+    present_ids: list[str],
+    harmonic_state: "HarmonicState | None" = None,
+    emotional_deltas: "dict[str, EmotionalDelta | None] | None" = None,
+    urgency: float = 0.0,
+) -> dict[str, Any]:
+    """Layer 1b — tick-fresh shared block, identical for all NPCs in the
+    same dispatch batch but different each tick.
+
+    Fields: present_npcs, shared_recent (verbatim tier — NPC speech only,
+    player input excluded), shared_events (world events this tick),
+    group_display (harmonic fast buffers of all present NPCs).
+    shared_recent is urgency-gated: stripped under crisis so agents focus
+    on the immediate tactical situation, not conversation history.
+    """
+    group: dict[str, Any] = {"present_npcs": present_ids}
+
+    gm = ctx.group_memory
+    # Verbatim history dropped under high urgency (crisis = tactical focus).
+    if urgency < 0.5 and gm.verbatim:
+        group["shared_recent"] = gm.verbatim[-10:]
+
+    shared_events = [e.raw_data for e in ctx.world_events[-10:] if e.raw_data]
+    if shared_events:
+        group["shared_events"] = shared_events
+
+    group_display = _build_group_display(present_ids, harmonic_state, emotional_deltas)
     if group_display:
         group["group_display"] = group_display
 

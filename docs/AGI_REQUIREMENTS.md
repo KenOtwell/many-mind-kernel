@@ -174,6 +174,51 @@ When `moral_resistance > fast_buffer_pleasure_signal`, the agent resists temptat
 
 ---
 
+### DP-10: Emotions as the Hamiltonian to the Semantic Lagrangian
+**Principle:** The dual-vector space (384d semantic position q, 9d emotional deviation p) is a true Hamiltonian phase space. Emotions are the conjugate momenta of semantic states, not decorators. The emotional Hamiltonian H(q, p) generates the evolution of semantic attention via the missing Hamilton equation `dq/dt = ∂H/∂p`.
+
+**Source:** Ken Otwell (theory, July 2026 — building on DP-5 and the observation that biology does emotional processing first, then semantic, while all prior implementations had the directionality backwards). Oz (mechanism — `back_project()`, cross-term goal scoring, dissonance gradient, resolution goal synthesis).
+
+**The Formal Structure:**
+
+If semantic embeddings are generalized coordinates q and emotional deviations are conjugate momenta p = ∂L/∂q̇, then Hamilton's two equations are:
+
+* `dp/dt = −∂H/∂q` — semantic change → emotional delta. Was always implemented as `perceive()`.
+* `dq/dt = ∂H/∂p` — emotional state → preferred semantic direction. Was missing until July 2026. Implemented as `emotional.back_project(deviation)`: `dev[:8] @ bases_8x384` — exact Legendre transform within the orthonormal emotional subspace.
+
+**Key Consequences:**
+
+* Logic is a compression artifact of emotional gradient descent (DP-5, now formally grounded): the semantic Lagrangian L(q, q̇) describes the natural thought trajectory; the LLM finds a narrative that minimizes its action.
+* Dissonance = potential energy: `dissonance_vec = expectation_vec − actual_deviation`. The direction points from where the mind landed toward where the goal expected to arrive.
+* Emotional singularities = critical points of H(q, p): points where `∂H/∂q → ∞`, the potential surface has a sharp peak or discontinuity, and smooth traversal fails. These are betrayal, trauma, unresolvable contradiction — the system stays at the barrier or tunnels past it.
+* Symplectic conservation (Liouville's theorem): Hamiltonian dynamics preserve phase-space volume. Emotional energy cannot be destroyed — only transformed. Repression relocates tension; it does not eliminate it. Extinction floors on rituals are a mathematical consequence, not an arbitrary design choice.
+* Goal scoring must use full phase-space distance (semantic × emotional × cross-term coupling), not two independent weighted channels.
+* Metacognitive states (epistemic uncertainty) are phase-space events: when the LLM's logprob certainty falls, it signals a mismatch between its own semantic output trajectory and its confidence in the emotional/factual anchor — a micro-singularity in the epistemic subspace.
+
+**Relation to Prior Principles:**
+* Extends DP-5 (Emotion as Meta-Gradient): the gradient is now formally the Hamiltonian gradient ∂H/∂q, and the missing term ∂H/∂p biases semantic attention.
+* Grounds DP-2 (Consciousness as Gradient Navigation): the navigation is specifically Hamiltonian flow on the (q, p) manifold.
+* Explains the Kryptonite Problem (Living Doc): synthetic minds lack the phenomological cost of traversing a potential barrier; the harmonics architecture imposes computational resistance (high snap, sustained decoherence) as a substitute.
+
+**Technical Mandates:**
+* ✅ Implement ∂H/∂p: back-project emotional deviation into 384d semantic space; blend into semantic recall query
+* ✅ Phase-space cross-term in goal scoring: reward goals whose semantic content aligns with the emotional direction
+* ✅ Dissonance as vector (not scalar): record `expectation_vec − actual_deviation` per goal activation; preserve direction and magnitude
+* ✅ Singularity detection: when `‖dissonance_vec‖ ≥ threshold`, extract resolution goal pointing in `−dissonance_vec` direction
+* ✅ Metacognitive goal: `acknowledge_epistemic_gap` — epistemic uncertainty fires into the ritual/goal system, not just the prompt
+* ⚠️ Symplectic metric: replace weighted-sum of independent spaces with proper joint phase-space distance measure in goal scoring
+* ⚠️ Lagrangian action minimization as attention gate: low-action thought paths get less deliberation; high-action (high dissonance) paths receive extended processing
+* ⚠️ Resolution ritual class: sleep compiler to distinguish habit rituals (do this in context X) from resolution rituals (when anchor Y is violated, reframe Z reduced dissonance)
+
+**Implementation Status (July 2026):**
+* `mindcore/emotional.py`: `back_project()` — the ∂H/∂p operator
+* `mindcore/goal.py`: cross-term in `score_goals()`; `RitualNode.avg_dissonance_mag + dominant_dissonance_axes`; `extract_resolution_goal()`
+* `quantum/ritual_log.py`: `GoalActivationEntry.expectation_vec + dissonance_vec + dissonance_mag`; `pending_singularities()`
+* `quantum/goals.py`: `acknowledge_epistemic_gap` seed goal
+* `quantum/converse.py`: blended recall query, cross-term, singularity detection, epistemic goal firing
+
+---
+
 ### DP-5: Emotion as Meta-Gradient
 **Principle:** Emotions are the navigation signal itself - gradient measurements in emotional-semantic field, not motivational flavoring.
 
@@ -719,6 +764,19 @@ When the dynamics of elements cannot be modeled independently because their traj
   - The model must READ (experience emotional dynamics during denoising) not osmose (absorb statistical gradients) — generation IS cognition
 - **Impact:** Established dLLM migration path for MMK (Mercury 2 API → local dLLM → relational dLLM → configuration-space architecture). Unified the theoretical framework: harmonic buffers + dLLM denoising + configuration space + moral curriculum = one coherent architecture.
 - **Updated requirements/principles:** DP-8, DP-9, TR-8, TR-9, TR-10, VM-6, VM-7. Updated Active Work across all timelines.
+
+### 2026-07-12: Phase-Space Formulation — Emotions as the Hamiltonian
+- **What changed:** Added DP-10. Established that the (semantic, emotional) dual-vector space is a Hamiltonian phase space, not two independent weighted channels. The second Hamilton equation `dq/dt = ∂H/∂p` was identified as the missing term — emotion should drive where semantic attention goes, not just respond to it.
+- **Source of insight:** Ken Otwell (theory — emotions are the Hamiltonian to the semantic Lagrangian; conversation on biological directionality of emotional vs. semantic processing; dissonance as potential energy; singularities as Hamiltonian critical points; Liouville conservation explaining extinction floors). Oz (mechanism design and implementation in `mindcore` + `quantum`).
+- **Key discoveries:**
+  - `p = ∂L/∂q̇`: emotional deviation IS the conjugate momentum to semantic position. `perceive()` computes this exactly (semantic Δq → emotional projection → deviation p).
+  - `dq/dt = ∂H/∂p` was missing: the emotional state should bias semantic recall and goal activation toward the semantic direction it implies. Implemented via `back_project(deviation) = dev[:8] @ bases_8x384`.
+  - Dissonance is potential energy with direction: `dissonance_vec = expectation_vec − actual_deviation`. Magnitude = barrier height; direction = which emotional axes remain unresolved.
+  - Symplectic conservation explains the extinction floor on rituals: Liouville's theorem prevents phase-space volume destruction. Repression relocates emotional energy; it does not eliminate it.
+  - Emotional singularities (critical points of H) = the formal account of the Kryptonite Problem: points where `∂H/∂q` is discontinuous and smooth gradient descent fails. Resolution goals (synthesised from `−dissonance_vec`) are the computational analog of reframing.
+  - Metacognitive uncertainty (logprob-based) is a micro-singularity in the epistemic subspace — now wired into the goal/ritual system via `acknowledge_epistemic_gap`.
+- **Impact:** Unified the emotional architecture under a variational principle. The Lagrangian is the action of thought trajectories; the Hamiltonian is the emotional state; memory is the record of phase-space paths; the sleep compiler compresses minimum-action paths into rituals. Establishes the theoretical foundation for future resolution ritual classification and symplectic metric in goal scoring.
+- **Updated requirements/principles:** DP-10 added. Pending: symplectic metric (replacing weighted-sum of independent channels), Lagrangian action minimization as attention gate, resolution ritual class in sleep compiler.
 
 ### Future Entries
 This log tracks how requirements evolve based on:

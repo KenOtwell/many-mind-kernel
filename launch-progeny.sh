@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-QDRANT_HOST="${1:-192.168.0.13}"
+QDRANT_HOST="${1:-192.168.0.104}"
 LLAMA_SERVER="$HOME/llama.cpp/build/bin/llama-server"
 MODEL="$HOME/models/gguf/mistral-nemo-12b-instruct-q8.gguf"
 VENV="$HOME/Neo/.venv/bin/python"

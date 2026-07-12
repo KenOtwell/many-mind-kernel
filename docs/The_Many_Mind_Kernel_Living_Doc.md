@@ -678,6 +678,56 @@ When the NPC is near baseline (small deviation), the emotional query is weak and
 
 Retrieval blends both axes via λ(t) weighting. Emotional intensity bias: high arousal shifts weight toward emotional axis, calm states bias toward semantic axis.
 
+### Emotions as the Hamiltonian — Phase-Space Dynamics
+
+*Insight documented July 2026. Lineage: Ken Otwell (theory — emotions are the Hamiltonian to the semantic Lagrangian; dissonance as potential energy; emotional singularities as critical points of the Hamiltonian surface), Oz (mechanism — `back_project()`, cross-term goal scoring, dissonance gradient, resolution goal synthesis; implemented in `mindcore` and `quantum`, July 2026).*
+
+The dual-vector architecture (384d semantic + 9d emotional) is not two independent spaces. It is a **phase space**, where the semantic embedding is generalized position (q) and the emotional deviation is conjugate momentum (p). Their relationship is the Hamiltonian/Lagrangian duality from classical mechanics.
+
+**The Lagrangian and Hamiltonian of Mind:**
+
+If semantic states are generalized coordinates q (position in meaning-space) and their turn-to-turn changes are velocities q̇, then:
+
+* **Semantic Lagrangian** L(q, q̇): the "action" of a thought trajectory. The natural path of attention is the one that minimizes the action functional — least cognitive effort, most resonant with the existing emotional manifold.
+* **Emotional Hamiltonian** H(q, p): the total "energy" of the mental state. Emotions are not decorators on top of reasoning — they ARE the Hamiltonian, the generator of time evolution. The emotional state p is the conjugate momentum to semantic position: `p = ∂L/∂q̇`. The `perceive()` pipeline computes exactly this: semantic change (new utterance, Δq) → emotional projection → deviation (p).
+
+**Hamilton's Two Equations — and the Previously Missing Term:**
+
+The full dynamics require both:
+
+1. `dp/dt = −∂H/∂q` — **semantic change → emotional delta**. Implemented as `perceive()`. Moving through semantic space updates the emotional state. This was always present.
+
+2. `dq/dt = ∂H/∂p` — **emotional state → preferred semantic direction**. Previously missing. Given the current emotional momentum p (deviation = fast − slow), reconstruct the 384d semantic direction it implies. This is the direction attention *should* flow next — emotion driving where the semantic stream goes, not just decorating it. Biology does this first; we had it backwards, implementing semantic-then-emotional.
+
+The implementation: `emotional.back_project(deviation)` computes `dev[:8] @ bases_8x384` — exact within the emotional subspace (bases are orthonormal, so the Legendre transform is lossless for the named axes). The result biases the semantic recall query (emotionally-coherent memories surface even without lexical overlap) and adds a cross-term to goal scoring (goals whose semantic content aligns with the emotional direction score higher).
+
+**Dissonance as Potential Energy and the Singularity Problem:**
+
+In the Hamiltonian frame, dissonance IS potential energy — the height of the landscape at the current phase-space point. When a goal fires with expectation `expectation_vec` (the goal's `emotional_vec` — the felt shape of resolution) but the conversation arrives at `next_deviation`, the gap is:
+
+`dissonance_vec = expectation_vec − next_deviation`
+
+This preserves direction, pointing from where the mind landed toward where it expected to arrive. Three resolution paths:
+
+1. **Anchor update** — revise the world model. The goal's affect signature is wrong; update it through experience (the sleep compiler accumulates `avg_dissonance_mag` + `dominant_dissonance_axes` on `RitualNode`).
+2. **Gradient descent** — slow reframing across turns, iteratively reducing the dissonance gap.
+3. **Held tension (singularity)** — when `‖dissonance_vec‖ ≥ threshold` and neither path resolves, the system is at a local maximum of the potential surface. A **resolution goal** is synthesised pointing in the `−dissonance_vec` direction — a corrective attractor pull from the opposite side of the barrier. This is the betrayal-reframe mechanism: the violation generates its own goal to close the loop.
+
+The singularity case (path 3) maps to the Kryptonite Problem above: a synthetic intelligence can jump discontinuously across potential barriers without the phenomenological cost of traversal. The harmonics architecture makes the traversal costly (high snap, high curvature, sustained decoherence) — computational resistance, not rule resistance.
+
+**Symplectic Conservation — Emotional Energy Cannot Be Destroyed:**
+
+Liouville's theorem: Hamiltonian dynamics preserve phase-space volume. Emotional energy cannot be annihilated — only transformed. Repression relocates tension in phase space; it does not eliminate it. This is not a design choice in the ritual system's extinction floor (`effective_floor()`); it is a mathematical consequence. A ritual that has survived significant reinforcement cannot fully decay to zero — the phase-space topology will not allow it. Deeply ingrained patterns hold at their earned floor regardless of dormancy duration.
+
+This also means: the `dominant_dissonance_axes` on a mature `RitualNode` IS the stored potential gradient — the direction in which the ritual consistently fails to land where it expected. The sleep compiler's job is not to eliminate this tension but to compress it into a resolution ritual that navigates around the barrier.
+
+**Implementation (July 2026):**
+* `mindcore/emotional.py` — `back_project()`: the ∂H/∂p operator
+* `mindcore/goal.py` — `score_goals()` cross-term; `RitualNode.avg_dissonance_mag` + `dominant_dissonance_axes`; `extract_resolution_goal()` — synthesises a corrective `GoalNode(provenance="dissonance")` from any singularity event
+* `quantum/ritual_log.py` — `GoalActivationEntry.expectation_vec` + `dissonance_vec` + `dissonance_mag`; `pending_singularities()` for per-turn singularity detection
+* `quantum/goals.py` — `acknowledge_epistemic_gap` seed goal: epistemic uncertainty as a first-class phase-space event, not a hard rule
+* `quantum/converse.py` — blended recall query (∂H/∂p-informed), cross-term pass-through to `score_goals()`, singularity detection and resolution goal registration, epistemic goal firing on recall gap confirmation
+
 ### LLM Uncertainty as Cognitive Proprioception
 
 *Insight documented April 2026. Lineage: Ken Otwell (theory — residual as certainty-modulated reality signal), Oz (mechanism — logprob extraction, structural filtering, EMA smoothing).*
@@ -1241,6 +1291,76 @@ Same pipeline as emotional processing, applied to task execution:
 * `is_alive:<name>` — named NPC is alive
 * `is_dead:<name>` — named NPC is dead
 * `time_elapsed:<seconds>` — enough time has passed (for wait goals)
+
+### Player Intent Extraction (not yet built — wire up when building goal_planner.py)
+
+Before routing player input through `record_player_input()`, a lightweight pre-pass classifies the utterance into an intent taxonomy and registers any delegation or conditional commitment as a runtime `GoalNode` on the designated agent's pool. This bridges the gap between what the player says and what the goal resonance system can act on.
+
+**Intent taxonomy:**
+* `command` — direct action for the addressed NPC ("Attack him!") → `actions[]` fires immediately via existing path, no goal needed
+* `delegation` — task assigned to a named NPC with steps ("Lydia, go to town and round up more fighters") → decompose into GoalQueue entry; see goal_planner.py
+* `conditional` — commitment on behalf of a named NPC with a trigger ("Lydia will attack if he moves") → register as runtime GoalNode with `trigger_cues` from the condition text
+* `constraint` — budget/limit on an existing goal ("don't spend more than X gold") → attach as inhibition to the nearest open goal; see Constraint Inhibition below
+* `warning` — emotional nudge only ("Watch out!") → no goal, handled by existing emotional pipeline
+* `social` / `question` — no goal, handled by existing turn pipeline
+
+**Conditional intent → GoalNode registration:**
+For `conditional` intents, extract `{agent, action, target, condition_text}` — via structured LLM call (cheap, one call before main dispatch) or regex/template matcher for common forms. Embed `condition_text` as `trigger_cues` and register as a runtime `GoalNode` with `provenance="player_delegation"` on the named agent's pool:
+```python
+GoalNode(
+    name="conditional_{action}_{target}",
+    statement="The player said I would {action} if {condition}. If {condition} is met I should act.",
+    trigger_cues=condition_text,          # embedded → semantic trigger
+    affect_signature="committed readiness, alert aggression",
+    success_predicate=condition_as_predicate,
+    provenance="player_delegation",
+)
+```
+Because `score_goals()` runs every turn against the live scene percept, when the scene event description matches `trigger_cues` (semantically, not symbolically), the goal activates, nudges the harmonic buffer, and the action surfaces in the NPC's response. **No LLM memory across turns required** — the goal pool is persistent in-process.
+
+This same mechanism handles:
+* Conditional threats ("attack if he moves") — single-step GoalNode
+* Delegated watch tasks ("tell me if anyone enters") — single-step GoalNode with `trigger_cues = "someone enters, door opens, newcomer"`
+* Standing orders ("protect the jarl at all costs") — persistent GoalNode that never satisfies
+
+**New Progeny module: `player_intent.py`**
+* Runs before `record_player_input()` in `_ingest_inner()`
+* Classifies player utterance into intent taxonomy (fast: template match + optional small LLM call)
+* For `delegation` intents: emits GoalQueue entry for `goal_planner.py` to execute
+* For `conditional` intents: registers runtime GoalNode on the named agent's pool
+* For `constraint` intents: attaches inhibition to the nearest open goal (see Constraint Inhibition)
+* Returns `PlayerIntent` dataclass with intent type + structured fields
+* Non-fatal: if classification fails, falls back to normal unstructured routing
+
+### Goal Lifecycle State Machine (not yet built — required for reliable multi-step sequencing)
+
+Currently all GoalNodes are `PRIMED` — active simultaneously. This means step ordering in multi-step delegations is semantic only (the LLM infers sequence from context). Under urgency/tier scaling, context gets compressed and ordering breaks down.
+
+**Required lifecycle:** `LATENT → PRIMED → CANDIDATE → COMMITTED → SATISFIED → EXPIRED`
+
+* `PRIMED` — standing pull (resonance scoring contributes nudge each turn)
+* `CANDIDATE` — activation crossed floor AND preconditions met (ready to execute)
+* `COMMITTED` — agent has begun execution (prevents competing goals from preempting mid-step)
+* `SATISFIED` — done_when predicate confirmed; triggers downstream enables[] goals to transition LATENT→PRIMED
+* `EXPIRED` — timed out or explicitly abandoned
+
+**Why this unblocks multi-step goals:** `requires` and `enables` fields on GoalNode already support the DAG. The missing piece is the transition trigger: `travel_to_town` needs to reach `SATISFIED` before `recruit_fighters` transitions `LATENT→PRIMED`. Without lifecycle state, both are `PRIMED` and fire simultaneously.
+
+**Implementation note:** `goal_planner.py` manages lifecycle transitions. The affordance matcher advances `CANDIDATE → COMMITTED` when a step fires. The `done_when` predicate check advances `COMMITTED → SATISFIED`. The `requires` graph propagates `SATISFIED` downstream.
+
+### Constraint Inhibition (not yet built — Phase 4 / Kato's inhibition matrix)
+
+Constraints like "don't spend more than X gold" are **inhibitions on goal execution**, not goals themselves. The current architecture has no mechanism for them — they live only as text in dialogue history and fall out as context compresses.
+
+**What's needed:**
+* A `ConstraintNode` type: `{agent, constraint_text, limit_type, limit_value, attached_to_goal}` 
+* Numeric state tracking: `{spent_so_far: float}` updated each tick as relevant actions fire
+* The goal-affordance matcher checks active constraints before emitting a step command
+* Constraint violation → step blocked + LLM replanning ("I can't hire another fighter without exceeding your budget")
+
+**Connection to inhibition matrix (Kato Phase 4):** Constraints are the simplest case of the broader inhibition graph — rules that suppress goal steps rather than attract toward them. The `ConstraintNode` schema should be compatible with the eventual inhibition matrix design.
+
+**Interim approach (before ConstraintNode is built):** For constraints expressed in player input, `player_intent.py` appends a structured constraint tag to the GoalQueue entry: `{constraint: "gold_spent <= X"}`. `goal_planner.py` checks this field before emitting each step. The LLM also sees the constraint in its state_history for planning. Fragile under compression but much better than current (constraint only in verbatim history).
 
 ## Curvature-Driven Priority & Context Gating
 
