@@ -678,6 +678,56 @@ When the NPC is near baseline (small deviation), the emotional query is weak and
 
 Retrieval blends both axes via λ(t) weighting. Emotional intensity bias: high arousal shifts weight toward emotional axis, calm states bias toward semantic axis.
 
+### Emotions as the Hamiltonian — Phase-Space Dynamics
+
+*Insight documented July 2026. Lineage: Ken Otwell (theory — emotions are the Hamiltonian to the semantic Lagrangian; dissonance as potential energy; emotional singularities as critical points of the Hamiltonian surface), Oz (mechanism — `back_project()`, cross-term goal scoring, dissonance gradient, resolution goal synthesis; implemented in `mindcore` and `quantum`, July 2026).*
+
+The dual-vector architecture (384d semantic + 9d emotional) is not two independent spaces. It is a **phase space**, where the semantic embedding is generalized position (q) and the emotional deviation is conjugate momentum (p). Their relationship is the Hamiltonian/Lagrangian duality from classical mechanics.
+
+**The Lagrangian and Hamiltonian of Mind:**
+
+If semantic states are generalized coordinates q (position in meaning-space) and their turn-to-turn changes are velocities q̇, then:
+
+* **Semantic Lagrangian** L(q, q̇): the "action" of a thought trajectory. The natural path of attention is the one that minimizes the action functional — least cognitive effort, most resonant with the existing emotional manifold.
+* **Emotional Hamiltonian** H(q, p): the total "energy" of the mental state. Emotions are not decorators on top of reasoning — they ARE the Hamiltonian, the generator of time evolution. The emotional state p is the conjugate momentum to semantic position: `p = ∂L/∂q̇`. The `perceive()` pipeline computes exactly this: semantic change (new utterance, Δq) → emotional projection → deviation (p).
+
+**Hamilton's Two Equations — and the Previously Missing Term:**
+
+The full dynamics require both:
+
+1. `dp/dt = −∂H/∂q` — **semantic change → emotional delta**. Implemented as `perceive()`. Moving through semantic space updates the emotional state. This was always present.
+
+2. `dq/dt = ∂H/∂p` — **emotional state → preferred semantic direction**. Previously missing. Given the current emotional momentum p (deviation = fast − slow), reconstruct the 384d semantic direction it implies. This is the direction attention *should* flow next — emotion driving where the semantic stream goes, not just decorating it. Biology does this first; we had it backwards, implementing semantic-then-emotional.
+
+The implementation: `emotional.back_project(deviation)` computes `dev[:8] @ bases_8x384` — exact within the emotional subspace (bases are orthonormal, so the Legendre transform is lossless for the named axes). The result biases the semantic recall query (emotionally-coherent memories surface even without lexical overlap) and adds a cross-term to goal scoring (goals whose semantic content aligns with the emotional direction score higher).
+
+**Dissonance as Potential Energy and the Singularity Problem:**
+
+In the Hamiltonian frame, dissonance IS potential energy — the height of the landscape at the current phase-space point. When a goal fires with expectation `expectation_vec` (the goal's `emotional_vec` — the felt shape of resolution) but the conversation arrives at `next_deviation`, the gap is:
+
+`dissonance_vec = expectation_vec − next_deviation`
+
+This preserves direction, pointing from where the mind landed toward where it expected to arrive. Three resolution paths:
+
+1. **Anchor update** — revise the world model. The goal's affect signature is wrong; update it through experience (the sleep compiler accumulates `avg_dissonance_mag` + `dominant_dissonance_axes` on `RitualNode`).
+2. **Gradient descent** — slow reframing across turns, iteratively reducing the dissonance gap.
+3. **Held tension (singularity)** — when `‖dissonance_vec‖ ≥ threshold` and neither path resolves, the system is at a local maximum of the potential surface. A **resolution goal** is synthesised pointing in the `−dissonance_vec` direction — a corrective attractor pull from the opposite side of the barrier. This is the betrayal-reframe mechanism: the violation generates its own goal to close the loop.
+
+The singularity case (path 3) maps to the Kryptonite Problem above: a synthetic intelligence can jump discontinuously across potential barriers without the phenomenological cost of traversal. The harmonics architecture makes the traversal costly (high snap, high curvature, sustained decoherence) — computational resistance, not rule resistance.
+
+**Symplectic Conservation — Emotional Energy Cannot Be Destroyed:**
+
+Liouville's theorem: Hamiltonian dynamics preserve phase-space volume. Emotional energy cannot be annihilated — only transformed. Repression relocates tension in phase space; it does not eliminate it. This is not a design choice in the ritual system's extinction floor (`effective_floor()`); it is a mathematical consequence. A ritual that has survived significant reinforcement cannot fully decay to zero — the phase-space topology will not allow it. Deeply ingrained patterns hold at their earned floor regardless of dormancy duration.
+
+This also means: the `dominant_dissonance_axes` on a mature `RitualNode` IS the stored potential gradient — the direction in which the ritual consistently fails to land where it expected. The sleep compiler's job is not to eliminate this tension but to compress it into a resolution ritual that navigates around the barrier.
+
+**Implementation (July 2026):**
+* `mindcore/emotional.py` — `back_project()`: the ∂H/∂p operator
+* `mindcore/goal.py` — `score_goals()` cross-term; `RitualNode.avg_dissonance_mag` + `dominant_dissonance_axes`; `extract_resolution_goal()` — synthesises a corrective `GoalNode(provenance="dissonance")` from any singularity event
+* `quantum/ritual_log.py` — `GoalActivationEntry.expectation_vec` + `dissonance_vec` + `dissonance_mag`; `pending_singularities()` for per-turn singularity detection
+* `quantum/goals.py` — `acknowledge_epistemic_gap` seed goal: epistemic uncertainty as a first-class phase-space event, not a hard rule
+* `quantum/converse.py` — blended recall query (∂H/∂p-informed), cross-term pass-through to `score_goals()`, singularity detection and resolution goal registration, epistemic goal firing on recall gap confirmation
+
 ### LLM Uncertainty as Cognitive Proprioception
 
 *Insight documented April 2026. Lineage: Ken Otwell (theory — residual as certainty-modulated reality signal), Oz (mechanism — logprob extraction, structural filtering, EMA smoothing).*
