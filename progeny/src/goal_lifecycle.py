@@ -30,7 +30,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-from progeny.src.goal_pool import ACTIVE_STATES, GoalNode, GoalState
+from mindcore.goal import ACTIVE_STATES, GoalNode, GoalState
 
 if TYPE_CHECKING:
     from progeny.src.event_accumulator import TurnContext

@@ -18,7 +18,7 @@ import logging
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from shared.constants import COLLECTION_GOALS
-from progeny.src.goal_pool import OWNER_ALL
+from mindcore.goal import OWNER_ALL
 from progeny.src.qdrant_client import search_vector
 from mindcore.goal import (
     GoalActivation, GoalPrimingResult, prime_from_hits,
