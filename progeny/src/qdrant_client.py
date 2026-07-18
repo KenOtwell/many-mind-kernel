@@ -97,8 +97,10 @@ async def init(host: str | None = None, port: int | None = None) -> None:
     global _client
     _host = host or settings.qdrant.host
     _port = port or settings.qdrant.rest_port
-    _client = AsyncQdrantClient(host=_host, port=_port,
-                                 check_compatibility=False)
+    # check_compatibility=False: client/server minor-version skew is cosmetic — the API
+    # we use (query_points/Prefetch/FusionQuery/upsert/retrieve/scroll) is stable across
+    # the 1.12–1.18 line, so we skip the check to silence the launch mismatch warning.
+    _client = AsyncQdrantClient(host=_host, port=_port, check_compatibility=False)
     logger.info("Qdrant client initialized → %s:%d", _host, _port)
 
 

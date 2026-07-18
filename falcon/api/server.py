@@ -44,8 +44,11 @@ async def lifespan(app: FastAPI):
     emotional.load_bases()
     logger.info("Enrichment pipeline ready (embedding + emotional projection)")
     # Connect to local Qdrant
+    # check_compatibility=False: client/server minor-version skew is cosmetic — the API
+    # we use is stable across the 1.12–1.18 line; skip the check to silence the warning.
     qdrant_client = AsyncQdrantClient(
         host=settings.qdrant.host, port=settings.qdrant.rest_port,
+        check_compatibility=False,
     )
     logger.info("Qdrant client initialized → %s:%d",
                 settings.qdrant.host, settings.qdrant.rest_port)
