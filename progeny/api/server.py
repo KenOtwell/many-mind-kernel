@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from progeny.api.routes import router, initialize_goals
 from progeny.src import llm_client
 from mindcore import embedding
+from mindcore.event_log import get_event_log
 from mindcore import emotional as emotional_projection
 from progeny.src import qdrant_client
 from progeny.src.prompt_formatter import SYSTEM_PROMPT
@@ -74,7 +75,14 @@ async def lifespan(app: FastAPI):
     qdrant_ok = await qdrant_client.health_check()
     logger.info("Qdrant: %s", "connected" if qdrant_ok else "unreachable (will retry per-op)")
     await _warm_kv_cache()
+    # Open the append-only event-log session (photographic memory). Records
+    # are written off the hot path; disable via EVENT_LOG_ENABLED=0.
+    get_event_log().start_session(meta={
+        "service": "progeny",
+        "model": settings.model.name,
+    })
     yield
+    get_event_log().close()
     logger.info("Progeny shutting down")
 
 

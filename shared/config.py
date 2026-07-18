@@ -32,7 +32,7 @@ def _env_bool(key: str, default: bool) -> bool:
 
 # Qdrant + embedding config are cognitive/infra primitives — now owned by
 # mindcore and re-exported here so Neo's Settings and imports keep working.
-from mindcore.config import QdrantConfig, EmbeddingConfig  # noqa: F401,E402
+from mindcore.config import QdrantConfig, EmbeddingConfig, EventLogConfig  # noqa: F401,E402
 
 
 @dataclass
@@ -202,6 +202,7 @@ class Settings:
     falcon: FalconConfig = field(default_factory=FalconConfig)
     progeny: ProgenyConfig = field(default_factory=ProgenyConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
+    event_log: EventLogConfig = field(default_factory=EventLogConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     model: ModelProfile = field(default_factory=load_model_profile)
 

@@ -43,3 +43,7 @@ qdrant_data/
 
 # Sensitive network diagrams (contains local IPs)
 network.jpg
+
+# Event-log sessions (photographic memory — large, generated)
+sessions/
+*.jsonl

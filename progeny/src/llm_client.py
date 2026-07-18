@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from shared.config import settings
+from mindcore.event_log import get_event_log
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,20 @@ async def generate(
     if profile.supports_json_mode:
         payload["response_format"] = {"type": "json_object"}
 
+    # Event log: record the request once (content-addressable — the foundation
+    # for the Phase 3 cache). The matching response points back via caused_by.
+    event_log = get_event_log()
+    req_id = event_log.log_llm_request(
+        messages=messages,
+        model=profile.name,
+        sampling={
+            "temperature": profile.temperature,
+            "top_p": profile.top_p,
+            "n_keep": n_keep,
+            "json_mode": profile.supports_json_mode,
+        },
+    )
+
     last_error: Exception | None = None
     attempts = 1 + _config.retry_attempts
 
@@ -131,7 +146,20 @@ async def generate(
                 if choices:
                     content = choices[0].get("message", {}).get("content", "")
                     if content:
-                        return _build_result(content, data)
+                        result = _build_result(content, data)
+                        event_log.log_llm_response(
+                            result.content,
+                            token_logprobs=result.token_logprobs,
+                            timings={
+                                "prompt_tokens": result.prompt_tokens,
+                                "prompt_ms": result.prompt_ms,
+                                "generated_tokens": result.generated_tokens,
+                                "generation_ms": result.generation_ms,
+                                "cache_tokens": result.cache_tokens,
+                            },
+                            caused_by=req_id,
+                        )
+                        return result
 
                 logger.warning("LLM returned empty content on attempt %d", attempt + 1)
                 last_error = LLMError("Empty response content")

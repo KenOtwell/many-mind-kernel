@@ -29,6 +29,7 @@ import numpy as np
 from mindcore import embedding
 from mindcore import emotional as emotional_projection
 from mindcore.harmonic_buffer import EmotionalDelta, HarmonicState
+from mindcore.event_log import get_event_log
 
 if TYPE_CHECKING:
     from progeny.src.event_accumulator import TurnContext
@@ -58,7 +59,11 @@ def process_text(
     """
     emb = embedding.embed_one(text)
     sem = emotional_projection.project(emb)
-    return harmonic_state.update(agent_id, sem)
+    delta = harmonic_state.update(agent_id, sem)
+    # Event log: capture the exact input sem folded into the buffer, the raw
+    # text anchor, and the derived signals (replay + nostalgia/drift trace).
+    get_event_log().log_delta(agent_id, [text], sem, delta)
+    return delta
 
 
 def process_texts(
@@ -87,15 +92,22 @@ def process_texts(
     all_embs = embedding.embed(texts)                        # (N, 384)
     all_sems = emotional_projection.project_batch(all_embs)  # (N, 9)
 
-    # Group semagrams by agent — one averaged update per agent per tick
+    # Group semagrams by agent — one averaged update per agent per tick.
+    # Texts are grouped in parallel so the event log records the raw anchors
+    # alongside the exact averaged sem folded into the buffer.
     agent_sem_lists: dict[str, list[np.ndarray]] = defaultdict(list)
-    for (agent_id, _), sem in zip(pairs, all_sems):
+    agent_text_lists: dict[str, list[str]] = defaultdict(list)
+    for (agent_id, text), sem in zip(pairs, all_sems):
         agent_sem_lists[agent_id].append(sem)
+        agent_text_lists[agent_id].append(text)
 
     results: dict[str, EmotionalDelta] = {}
+    event_log = get_event_log()
     for agent_id, sems in agent_sem_lists.items():
         mean_sem = np.mean(sems, axis=0).tolist()
-        results[agent_id] = harmonic_state.update(agent_id, mean_sem)
+        delta = harmonic_state.update(agent_id, mean_sem)
+        results[agent_id] = delta
+        event_log.log_delta(agent_id, agent_text_lists[agent_id], mean_sem, delta)
 
     return results
 

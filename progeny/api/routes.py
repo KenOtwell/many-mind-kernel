@@ -45,6 +45,7 @@ from progeny.src.memory_retrieval import MemoryRetriever, MemoryBundle
 from progeny.src.compression import ArcCompressor, SceneCompressor
 from progeny.src import qdrant_client as progeny_qdrant
 from mindcore.uncertainty import compute_certainty
+from mindcore.event_log import get_event_log
 from progeny.src import goal_priming
 from progeny.src import goal_lifecycle
 from progeny.src import identity_kernel
@@ -57,6 +58,7 @@ from progeny.src.goal_pool import GoalPool, GoalState, seed_goals
 from progeny.src.goal_lifecycle import LifecycleStore
 from mindcore import embedding as shared_embedding
 from mindcore import emotional as shared_emotional
+from shared.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,12 @@ _memory_writer = MemoryWriter()
 _memory_retriever = MemoryRetriever()
 _arc_compressor = ArcCompressor(writer=_memory_writer)
 _scene_compressor = SceneCompressor()
+
+# Append-only event log (photographic memory). Session opened in the server
+# lifespan; records are written off the hot path.
+_event_log = get_event_log()
+# Turn counter for checkpoint cadence (EVENT_LOG_CHECKPOINT_EVERY).
+_turn_counter = 0
 
 # Goal resonance pool — seeded at startup via initialize_goals().
 _goal_pool = GoalPool()
@@ -928,6 +936,10 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     """Inner pipeline — runs under _pipeline_lock."""
     tick_id = package.tick_id
 
+    # Event log: capture ALL inbound perception verbatim (every tick, not just
+    # turns) as the first thing we do — the photographic-memory record.
+    _event_log.log_tick(package)
+
     # Step 1: Accumulate events, detect turn boundary
     turn_context = _accumulator.ingest(package)
 
@@ -1268,6 +1280,20 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
             slide_window(buf.memory)
     # Slide the group timeline through the same compression pipeline
     slide_window(_accumulator._group_memory)
+
+    # Event log: record the behavioral output applied this turn, then a
+    # post-turn HarmonicState checkpoint — the exact-reconstruction anchor for
+    # replay (and the compaction handle). Cadence via EVENT_LOG_CHECKPOINT_EVERY.
+    global _turn_counter
+    for resp in all_responses:
+        _event_log.log_action(
+            resp.agent_id, resp.actor_value_deltas, resp.actions,
+            tick_id=str(tick_id),
+        )
+    _turn_counter += 1
+    every = settings.event_log.checkpoint_every_ticks
+    if every > 0 and _turn_counter % every == 0:
+        _event_log.log_checkpoint(_harmonic_state.snapshot(), tick_id=str(tick_id))
 
     elapsed_ms = int((time.monotonic() - start_ms) * 1000)
     timings = _aggregate_timings(all_gen_results)
