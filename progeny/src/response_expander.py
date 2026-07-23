@@ -72,17 +72,28 @@ _TRAILING_COMMA_RE = re.compile(r",\s*([}\]])")
 # Line comments (// ...) inside JSON — Mistral and other models do this
 _LINE_COMMENT_RE = re.compile(r"\s*//[^\n]*")
 
+# <think>...</think> reasoning blocks — reasoning models (Ornith, Qwen3,
+# DeepSeek-R1) emit these before the JSON answer when served via llama.cpp.
+# llama.cpp's JSON grammar mode suppresses them in most cases, but this
+# strip runs first as defense-in-depth for any that leak through.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
 
 def _repair_llm_output(raw: str) -> str:
     """
     Normalize common LLM output quirks before JSON parse.
 
     Handles:
+    - <think>...</think> reasoning blocks (Ornith, Qwen3, DeepSeek-R1)
     - Markdown code fences (```json ... ```)
     - Trailing commas before } or ]
     - Leading/trailing whitespace
     """
     text = raw.strip()
+
+    # Strip reasoning blocks before any other repair — they can contain
+    # arbitrary text including braces that would confuse later passes.
+    text = _THINK_BLOCK_RE.sub("", text).strip()
 
     # Strip markdown code fences — extract inner content
     fence_match = _FENCE_RE.search(text)

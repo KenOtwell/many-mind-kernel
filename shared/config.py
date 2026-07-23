@@ -166,6 +166,19 @@ MODEL_PROFILES: dict[str, dict] = {
         "supports_json_mode": True,
         "name": "generic",
     },
+    # Ornith-1.0-35B MoE (deepreinforce-ai/Ornith-1.0-35B-GGUF).
+    # Qwen3.5 base — no repeat penalty, flexible turn order, JSON mode on.
+    # Serve with: llama-server -hf deepreinforce-ai/Ornith-1.0-35B-GGUF:Q5_K_M
+    #             --jinja -ngl 99 -c 8192 --port 8080
+    # The --jinja flag is required to apply the Qwen3 chat template.
+    "ornith-35b-moe": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "repeat_penalty": 1.0,
+        "strict_alternation": False,
+        "supports_json_mode": True,
+        "name": "ornith-35b-moe",
+    },
 }
 
 
