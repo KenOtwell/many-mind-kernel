@@ -21,6 +21,7 @@ Public API:
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -59,10 +60,12 @@ def process_text(
     """
     emb = embedding.embed_one(text)
     sem = emotional_projection.project(emb)
-    delta = harmonic_state.update(agent_id, sem)
+    now = time.monotonic()
+    delta = harmonic_state.update(agent_id, sem, now=now)
     # Event log: capture the exact input sem folded into the buffer, the raw
-    # text anchor, and the derived signals (replay + nostalgia/drift trace).
-    get_event_log().log_delta(agent_id, [text], sem, delta)
+    # text anchor, the derived signals, and the exact decay time `now` so the
+    # fold is deterministic (replay + nostalgia/drift trace).
+    get_event_log().log_delta(agent_id, [text], sem, delta, now=now)
     return delta
 
 
@@ -103,11 +106,15 @@ def process_texts(
 
     results: dict[str, EmotionalDelta] = {}
     event_log = get_event_log()
+    # One timestamp for the whole batch — all agents updated this tick share the
+    # same decay instant, and it is logged so replay folds deterministically.
+    now = time.monotonic()
     for agent_id, sems in agent_sem_lists.items():
         mean_sem = np.mean(sems, axis=0).tolist()
-        delta = harmonic_state.update(agent_id, mean_sem)
+        delta = harmonic_state.update(agent_id, mean_sem, now=now)
         results[agent_id] = delta
-        event_log.log_delta(agent_id, agent_text_lists[agent_id], mean_sem, delta)
+        event_log.log_delta(
+            agent_id, agent_text_lists[agent_id], mean_sem, delta, now=now)
 
     return results
 

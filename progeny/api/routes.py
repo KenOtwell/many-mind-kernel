@@ -266,7 +266,9 @@ async def _prime_goals_for_turn(
 
         # Transient curiosity spike from the leading resonance this tick.
         if any(res.nudge):
-            _harmonic_state.apply_nudge(agent_id, res.nudge)
+            _nudge_now = time.monotonic()
+            _harmonic_state.apply_nudge(agent_id, res.nudge, now=_nudge_now)
+            _event_log.log_nudge(agent_id, res.nudge, now=_nudge_now)
 
         # Standing motivational pull from active (unsatisfied) goals, amplified
         # by dissonance — the unmet hunt tugs harder when enablers are missing.
@@ -275,7 +277,9 @@ async def _prime_goals_for_turn(
             base = goal_priming.STANDING_PULL_GAIN * sum(n.base_weight for n in active)
             pull_mag = base * (1.0 + dissonance)
             pull = [v * pull_mag for v in goal_priming.curiosity_direction()]
-            _harmonic_state.apply_nudge(agent_id, pull)
+            _pull_now = time.monotonic()
+            _harmonic_state.apply_nudge(agent_id, pull, now=_pull_now)
+            _event_log.log_nudge(agent_id, pull, now=_pull_now)
 
         # 6d: surface the get-acquainted goal as recalled content while it is
         # active (candidate/committed) — affect + recall, never an imperative.
@@ -363,8 +367,12 @@ def _apply_llm_harmonics(
 
         # Apply as a regular buffer update — the EMA smoothing provides
         # additional damping, so a single LLM proposal can't jerk the
-        # buffer violently even at blend=1.0.
-        _harmonic_state.update(resp.agent_id, blended)
+        # buffer violently even at blend=1.0. Logged as a delta (with its exact
+        # decay time) so replay reproduces this Pass-2 correction.
+        now = time.monotonic()
+        result = _harmonic_state.update(resp.agent_id, blended, now=now)
+        _event_log.log_delta(
+            resp.agent_id, ["<llm-harmonics>"], blended, result, now=now)
         applied += 1
 
     if applied:
@@ -588,7 +596,9 @@ async def _condition_approach_by_valence(
             else:
                 continue
 
-            _harmonic_state.apply_nudge(observer, nudge)
+            _valence_now = time.monotonic()
+            _harmonic_state.apply_nudge(observer, nudge, now=_valence_now)
+            _event_log.log_nudge(observer, nudge, now=_valence_now)
 
             # Surface class-congruent recall as ordinary recalled content for
             # the NEXT tick (one-tick delay, like recognition).
@@ -780,14 +790,16 @@ def _apply_modulators_for_new_npcs(turn_context: TurnContext) -> None:
                 # Extract engine preset values when available in the wire data.
                 # For now, use defaults — the modulator infrastructure is
                 # exercised with uniform dynamics until the wire gap closes.
-                mods = build_modulators(
-                    aggression=int(pd.get("aggression", 0)),
-                    confidence=int(pd.get("confidence", 2)),
-                    morality=int(pd.get("morality", 3)),
-                    mood=int(pd.get("mood", 0)),
-                    assistance=int(pd.get("assistance", 0)),
-                )
+                actor_values = {
+                    "aggression": int(pd.get("aggression", 0)),
+                    "confidence": int(pd.get("confidence", 2)),
+                    "morality": int(pd.get("morality", 3)),
+                    "mood": int(pd.get("mood", 0)),
+                    "assistance": int(pd.get("assistance", 0)),
+                }
+                mods = build_modulators(**actor_values)
                 _harmonic_state.apply_modulators(agent_id, mods)
+                _event_log.log_modulators(agent_id, actor_values)
                 logger.info(
                     "Applied modulators for %s: agg=%.2f conf=%.2f mood=%s",
                     agent_id, mods.aggression_gain, mods.confidence_damp,
@@ -1193,6 +1205,7 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
             all_certainty.update(group_certainty)
             for agent_id, cert in group_certainty.items():
                 _harmonic_state.set_certainty(agent_id, cert)
+                _event_log.log_certainty(agent_id, cert)
             if any(c < 0.9 for c in group_certainty.values()):
                 logger.info(
                     "Uncertainty feedback for group %s: %s",
@@ -1293,7 +1306,13 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     _turn_counter += 1
     every = settings.event_log.checkpoint_every_ticks
     if every > 0 and _turn_counter % every == 0:
-        _event_log.log_checkpoint(_harmonic_state.snapshot(), tick_id=str(tick_id))
+        # Cool every buffer to a single instant so the snapshot is uniform in
+        # time; log that instant as the checkpoint's `now` so replay cools idle
+        # agents forward to exactly this point (deterministic reconstruction).
+        ckpt_now = time.monotonic()
+        _harmonic_state.cool_all(ckpt_now)
+        _event_log.log_checkpoint(
+            _harmonic_state.snapshot(), now=ckpt_now, tick_id=str(tick_id))
 
     elapsed_ms = int((time.monotonic() - start_ms) * 1000)
     timings = _aggregate_timings(all_gen_results)
