@@ -59,7 +59,7 @@ def _sem_vec(val: float = 0.1) -> list[float]:
 
 
 def _emo_vec(val: float = 0.5) -> list[float]:
-    """Deterministic 9d emotional vector for test use."""
+    """Deterministic 15d emotional vector for test use."""
     v = [val] * EMOTIONAL_DIM
     mag = sum(x * x for x in v) ** 0.5
     return [x / mag for x in v]

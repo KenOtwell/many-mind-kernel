@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from mindcore import qdrant_wrapper
-from shared.constants import COLLECTION_NPC_MEMORIES, EMOTIONAL_DIM, SEMANTIC_DIM
+from shared.constants import COLLECTION_NPC_MEMORIES, EMOTIONAL_DIM, RESIDUAL_INDEX, SEMANTIC_DIM
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ class TestIngest:
 
     @pytest.mark.asyncio
     async def test_writes_dual_vectors(self, mock_client):
-        """The upserted point should have semantic (384d) + emotional (9d) vectors."""
+        """The upserted point should have semantic (384d) + emotional (15d) vectors."""
         await qdrant_wrapper.ingest(
             client=mock_client,
             text="Something's not right. Stay behind me.",
@@ -125,7 +125,7 @@ class TestIngest:
 
     @pytest.mark.asyncio
     async def test_emotional_vector_is_valid_semagram(self, mock_client):
-        """The emotional vector should be a valid 9d semagram with non-negative residual."""
+        """The emotional vector should be a valid 15d semagram with non-negative residual."""
         await qdrant_wrapper.ingest(
             client=mock_client,
             text="I'm terrified of that dragon!",
@@ -135,8 +135,8 @@ class TestIngest:
         )
         point = mock_client.upsert.call_args.kwargs["points"][0]
         emotional_vec = point.vector["emotional"]
-        # Residual (axis 8) should be non-negative
-        assert emotional_vec[8] >= 0.0
+        # Residual (RESIDUAL_INDEX) should be non-negative
+        assert emotional_vec[RESIDUAL_INDEX] >= 0.0
         # Fear (axis 0) should be notably positive for "terrified"
         assert emotional_vec[0] > 0.1
 

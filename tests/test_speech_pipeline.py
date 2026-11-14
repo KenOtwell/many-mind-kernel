@@ -11,7 +11,7 @@ Locks in four related behaviours that were introduced together:
   3. Fact pool entries for `_speech` events store the clean `speech` text,
      not the JSON envelope (no audios path leakage into retrieval).
   4. `emotional_delta.process_inbound` embeds the clean speech text, not
-     `raw_data`, so the 9d semagram isn't polluted by JSON syntax.
+     `raw_data`, so the 15d semagram isn't polluted by JSON syntax.
 
 The canned payload mirrors the exact wire shape captured in production
 gameplay logs (Bryst's ferry response) so the tests exercise realistic

@@ -17,7 +17,7 @@ import logging
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from shared.constants import COLLECTION_GOALS
+from shared.constants import COLLECTION_GOALS, RESIDUAL_INDEX
 from mindcore.goal import OWNER_ALL
 from progeny.src.qdrant_client import search_vector
 from mindcore.goal import (
@@ -39,7 +39,7 @@ __all__ = [
 
 # Axis indices — re-exported so tests that reference them directly still work.
 EXCITEMENT_AXIS: int = 4
-RESIDUAL_AXIS: int = 8
+RESIDUAL_AXIS: int = RESIDUAL_INDEX
 
 def _owner_filter(agent_id: str) -> Filter:
     """Match goals owned by this agent OR shared by all (OWNER_ALL)."""

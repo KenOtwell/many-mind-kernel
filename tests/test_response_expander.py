@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 
+from shared.constants import EMOTIONAL_DIM
 from shared.schemas import ExtractionLevel
 from progeny.src.response_expander import expand_response
 
@@ -20,7 +21,7 @@ def _lydia_response_json() -> str:
                 "actor_value_deltas": {"Aggression": 2, "Confidence": 3, "Mood": 1},
                 "actions": [{"command": "Follow", "target": "Player"}],
                 "updated_harmonics": {
-                    "base_vector": [0.1, 0.6, 0.2, 0.0, 0.3, 0.0, 0.1, 0.7, 0.4]
+                    "base_vector": [0.1, 0.6, 0.2, 0.0, 0.3, 0.0, 0.1, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.4]
                 },
                 "new_memories": [
                     {"text": "Sensed danger near the market. Moved to protect."}
@@ -83,7 +84,7 @@ class TestStrictParse:
         responses = expand_response(_lydia_response_json(), ["Lydia"])
         h = responses[0].updated_harmonics
         assert h is not None
-        assert len(h.base_vector) == 9
+        assert len(h.base_vector) == EMOTIONAL_DIM
 
     def test_new_memories_parsed(self):
         responses = expand_response(_lydia_response_json(), ["Lydia"])

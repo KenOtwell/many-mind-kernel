@@ -18,7 +18,7 @@ Connection target: Gaming PC Qdrant at config.qdrant.host:rest_port.
 
 Named vector schema for skyrim_npc_memories:
   "semantic"  — 384d Cosine  (all-MiniLM content embedding)
-  "emotional" — 9d Cosine    (harmonic basis projection)
+  "emotional" — 15d Cosine    (harmonic basis projection)
 
 Dual-vector retrieval: prefetch both axes independently, fuse with RRF.
 λ-weighting and re-ranking live in memory_retrieval.py, not here —
@@ -122,7 +122,7 @@ async def ensure_collections() -> None:
     existing collections.
 
     Collections created:
-      skyrim_npc_memories — dual-vector (semantic 384d + emotional 9d)
+      skyrim_npc_memories — dual-vector (semantic 384d + emotional 15d)
       skyrim_agent_state  — single emotional vector (slow buffer = personality)
     """
     client = get_client()
@@ -232,7 +232,7 @@ async def ensure_collections() -> None:
                 vectors_config={
                     # Goal attractors share the memory dual-vector shape so goal
                     # priming reuses the retrieval machinery: semantic 384d
-                    # (trigger/affordance language) + emotional 9d (affect signature).
+                    # (trigger/affordance language) + emotional 15d (affect signature).
                     "semantic": VectorParams(
                         size=SEMANTIC_DIM, distance=Distance.COSINE,
                     ),
@@ -271,7 +271,7 @@ async def write_memory(
         agent_id:      The agent this memory belongs to.
         text:          Original text content (event text or arc summary).
         semantic_vec:  Pre-computed 384d content embedding.
-        emotional_vec: Pre-computed 9d semagram at encoding time.
+        emotional_vec: Pre-computed 15d semagram at encoding time.
         game_ts:       Skyrim internal game timestamp.
         tier:          "RAW", "MOD", or "MAX".
         arc_id:        For MOD/MAX: parent arc identifier.
@@ -334,7 +334,7 @@ async def write_goal(
         goal_id:       Deterministic point ID (UUID string).
         statement:     The goal as the agent would recall it (recalled content).
         semantic_vec:  Pre-computed 384d trigger embedding.
-        emotional_vec: Pre-computed 9d affective signature.
+        emotional_vec: Pre-computed 15d affective signature.
         payload:       Goal metadata (name, role, owner, state, base_weight,
                        edges, predicates, ...). Merged with the statement.
 
@@ -430,9 +430,9 @@ async def write_agent_state(
 
     Args:
         agent_id:       NPC name/ID.
-        fast:           9d fast EMA buffer.
-        medium:         9d medium EMA buffer.
-        slow:           9d slow EMA buffer (stored as vector).
+        fast:           15d fast EMA buffer.
+        medium:         15d medium EMA buffer.
+        slow:           15d slow EMA buffer (stored as vector).
         prev_curvature: Curvature from last update.
         initialized:    Whether the buffer has received any updates.
     """
@@ -635,7 +635,7 @@ async def search_memories(
     returns the raw fused set for downstream processing.
 
     Args:
-        emotional_vec: 9d query vector — current harmonic state.
+        emotional_vec: 15d query vector — current harmonic state.
         semantic_vec:  384d query vector — current content embedding.
         agent_id:      Optional: restrict search to one agent's memories.
         limit:         Number of fused candidates to return.

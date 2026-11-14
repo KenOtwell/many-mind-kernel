@@ -5,12 +5,16 @@ Emotional axes, actor values, command vocabulary, collection names.
 """
 
 # ---------------------------------------------------------------------------
-# 9d Emotional Semagram — cognitive constants, now owned by mindcore.
+# 15d Emotional Semagram — cognitive constants, owned by mindcore.
 # Re-exported so existing `from shared.constants import ...` keeps working.
+# Never hardcode the dimension or the residual position: use EMOTIONAL_DIM and
+# RESIDUAL_INDEX (the residual moved from index 8 to 14 in schema version 2).
 # ---------------------------------------------------------------------------
 from mindcore.constants import (  # noqa: F401
     EMOTIONAL_AXES,
     EMOTIONAL_DIM,
+    MOOD_AXIS_SCHEMA_VERSION,
+    RESIDUAL_INDEX,
     SEMANTIC_DIM,
     ZERO_SEMAGRAM,
 )
@@ -39,7 +43,7 @@ MOOD_TO_AXIS: dict[int, int | None] = {
     3: 6,      # Happy → joy axis
     4: 5,      # Sad → sadness axis
     5: 4,      # Surprised → excitement axis
-    6: 8,      # Puzzled → residual axis
+    6: RESIDUAL_INDEX,  # Puzzled → residual axis
     7: 3,      # Disgusted → disgust axis
 }
 

@@ -1,7 +1,7 @@
 """Tests for progeny.src.emotional_delta.
 
 Strategy: monkeypatch embedding to return deterministic unit vectors so
-tests are fast and model-free. Real projection bases are loaded — the 9d
+tests are fast and model-free. Real projection bases are loaded — the 15d
 math runs for real. HarmonicState is used directly (no mocking needed).
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ def fake_embed(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _load_projection_bases():
-    """Ensure the 9d projection bases are loaded for every test in this file."""
+    """Ensure the 15d projection bases are loaded for every test in this file."""
     from mindcore.emotional import load_bases
     load_bases()
 

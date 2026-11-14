@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from shared.constants import EMOTIONAL_DIM, EMOTIONAL_AXES
+from shared.constants import EMOTIONAL_DIM, EMOTIONAL_AXES, RESIDUAL_INDEX
 
 # Reset module state between tests
 @pytest.fixture(autouse=True)
@@ -28,7 +28,7 @@ class TestLoadBases:
         import mindcore.emotional as mod
         load_bases()
         assert mod._bases is not None
-        assert mod._bases.shape == (8, 384)
+        assert mod._bases.shape == (RESIDUAL_INDEX, 384)
 
     def test_bases_orthonormal(self):
         """GS bases should be orthonormal — dot products ~0 off-diagonal."""
@@ -39,7 +39,7 @@ class TestLoadBases:
         # Diagonal should be ~1.0
         np.testing.assert_allclose(np.diag(dot), 1.0, atol=1e-5)
         # Off-diagonal should be ~0.0
-        off_diag = dot - np.eye(8)
+        off_diag = dot - np.eye(RESIDUAL_INDEX)
         assert np.abs(off_diag).max() < 1e-5
 
 
@@ -52,13 +52,13 @@ class TestProject:
         assert len(sem) == EMOTIONAL_DIM
 
     def test_residual_nonnegative(self):
-        """Residual magnitude (axis 8) should always be >= 0."""
+        """Residual magnitude (RESIDUAL_INDEX) should always be >= 0."""
         from mindcore.emotional import project, load_bases
         load_bases()
         for _ in range(10):
             emb = np.random.randn(384).astype(np.float32)
             sem = project(emb)
-            assert sem[8] >= 0.0
+            assert sem[RESIDUAL_INDEX] >= 0.0
 
     def test_zero_vector_returns_zeros(self):
         from mindcore.emotional import project, load_bases
@@ -77,10 +77,10 @@ class TestProject:
         # Fear (axis 0) should be ~1.0 (it's a unit vector projected onto itself)
         assert sem[0] > 0.9
         # Other axes should be near zero (orthogonal)
-        for i in range(1, 8):
+        for i in range(1, RESIDUAL_INDEX):
             assert abs(sem[i]) < 0.1
         # Residual should be near zero (perfectly captured)
-        assert sem[8] < 0.1
+        assert sem[RESIDUAL_INDEX] < 0.1
 
 
 class TestProjectBatch:

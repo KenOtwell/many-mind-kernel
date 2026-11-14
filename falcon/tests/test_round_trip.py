@@ -255,12 +255,16 @@ class TestSchemaValidation:
         with pytest.raises(ValidationError):
             ActorValueDeltas(Aggression=5)  # Max is 3
 
-    def test_emotional_state_requires_9d(self):
-        """EmotionalState vectors must be exactly 9 dimensions."""
+    def test_emotional_state_requires_emotional_dim(self):
+        """EmotionalState vectors must be exactly EMOTIONAL_DIM wide (legacy 9d is rejected)."""
         from pydantic import ValidationError
+        from shared.constants import EMOTIONAL_DIM
         from shared.schemas import EmotionalState
-        with pytest.raises(ValidationError):
-            EmotionalState(
-                base_vector=[0.1, 0.2],  # Too short
-                delta=[0.0] * 9,
-            )
+        for bad_len in (2, 9, EMOTIONAL_DIM + 1):  # too short, legacy 9d, too long
+            with pytest.raises(ValidationError):
+                EmotionalState(
+                    base_vector=[0.1] * bad_len,
+                    delta=[0.0] * EMOTIONAL_DIM,
+                )
+        ok = EmotionalState(base_vector=[0.0] * EMOTIONAL_DIM, delta=[0.0] * EMOTIONAL_DIM)
+        assert len(ok.base_vector) == EMOTIONAL_DIM

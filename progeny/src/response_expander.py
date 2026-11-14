@@ -20,7 +20,7 @@ import logging
 import re
 from typing import Any
 
-from shared.constants import ACTOR_VALUE_RANGES, COMMAND_VOCABULARY
+from shared.constants import ACTOR_VALUE_RANGES, COMMAND_VOCABULARY, EMOTIONAL_DIM
 from shared.schemas import (
     Act,
     AgentResponse,
@@ -281,7 +281,7 @@ def _parse_harmonics(raw: Any) -> UpdatedHarmonics | None:
     if not isinstance(raw, dict):
         return None
     base_vector = raw.get("base_vector")
-    if not isinstance(base_vector, list) or len(base_vector) != 9:
+    if not isinstance(base_vector, list) or len(base_vector) != EMOTIONAL_DIM:
         return None
     try:
         return UpdatedHarmonics(base_vector=[float(v) for v in base_vector])

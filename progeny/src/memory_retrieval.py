@@ -2,7 +2,7 @@
 Memory retrieval — dual-vector search with λ(t) blending.
 
 Implements the multi-axis retrieval described in the living doc:
-  1. Emotional resonance (mood-congruent, via 9d semagram similarity)
+  1. Emotional resonance (mood-congruent, via 15d semagram similarity)
   2. Semantic similarity (text content, via 384d all-MiniLM)
   3. Role referents (payload filter: who was involved?)
   4. Recency (exponential game-time decay)
@@ -104,7 +104,7 @@ class MemoryRetriever:
         Args:
             agent_id: NPC identifier.
             semantic_query: 384d embedding of current context.
-            emotional_query: 9d semagram of current emotional state.
+            emotional_query: 15d semagram of current emotional state.
             lambda_t: Emotional–residual balance [0, 1].
             current_game_ts: Current game timestamp for recency scoring.
             referents: NPCs in the current scene (for referent boosting).

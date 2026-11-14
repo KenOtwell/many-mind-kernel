@@ -31,7 +31,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from shared.constants import EMOTIONAL_AXES, ZERO_SEMAGRAM
+from shared.constants import EMOTIONAL_AXES, EMOTIONAL_DIM, ZERO_SEMAGRAM
 from progeny.src.agent_scheduler import ScheduledAgent
 from progeny.src.event_accumulator import TieredMemory, TurnContext
 from progeny.src.fact_pool import FactPool
@@ -45,13 +45,15 @@ logger = logging.getLogger(__name__)
 
 # Compact axis labels for the group display — saves tokens vs full names
 _DEMEANOR_AXES = [a[:3].upper() for a in EMOTIONAL_AXES]  # FEA,ANG,LOV,...
+# Prompt legend generated from the axis list so it can never drift from the schema.
+_AXIS_LEGEND = " ".join(f"{a[:3].upper()}={a}" for a in EMOTIONAL_AXES)
 
 
 # ---------------------------------------------------------------------------
 # System prompt — stable across turns, benefits from KV cache reuse
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT_BASE = """You are the Many-Mind Kernel — the slow-twitch cognitive layer for multiple NPCs \
+SYSTEM_PROMPT_BASE = f"""You are the Many-Mind Kernel — the slow-twitch cognitive layer for multiple NPCs \
 in the world of Skyrim. You govern their thoughts, speech, and behavioral \
 dispositions simultaneously. The game engine handles fast-twitch reflexes \
 (combat, pathfinding, physics). You handle contemplation, strategy, and emotion.
@@ -76,8 +78,8 @@ ACTIONS (for things dials can't express — use sparingly):
 PROMPT STRUCTURE:
   group_context: shared scene — what everyone present can see and sense.
     group_display: each NPC's observable demeanor (their emotional "face").
-    Axes: FEA=fear ANG=anger LOV=love DIS=disgust EXC=excitement SAD=sadness \
-JOY=joy SAF=safety RES=residual. Tension = how volatile they appear.
+    Axes ({EMOTIONAL_DIM} values, this order): {_AXIS_LEGEND}. Every base_vector, demeanor \
+and updated_harmonics.base_vector uses this order. Tension = how volatile they appear.
   agents[]: private per-agent data — their inner state, memories, goals.
     Only YOU (as that agent's mind) see their full internal state.
     Other agents see only the group_display surface.
@@ -459,7 +461,7 @@ def _build_group_display(
     """Build the group emotional display — each NPC's observable "face".
 
     The fast buffer is what you'd see on someone's expression and body
-    language. Compact: name + 9d demeanor vector + tension scalar.
+    language. Compact: name + 15d demeanor vector + tension scalar.
     """
     if harmonic_state is None:
         return []

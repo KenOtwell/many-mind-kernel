@@ -226,7 +226,7 @@ class TestPromptPassedToLLM:
 class TestLLMHarmonics:
     """Verify two-pass emotional evaluation via updated_harmonics.
 
-    Pass 1 (mechanical): text embedding → 9d projection → EMA update.
+    Pass 1 (mechanical): text embedding → 15d projection → EMA update.
     Pass 2 (LLM): updated_harmonics.base_vector blended into buffer.
     """
 
@@ -241,7 +241,7 @@ class TestLLMHarmonics:
         configure(HarmonicConfig(llm_harmonics_blend=1.0))
 
         # LLM proposes high fear for Lydia
-        fear_vector = [0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
+        fear_vector = [0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
         mock_response = json.dumps({"responses": [{
             "agent_id": "Lydia",
             "utterance": "I sense danger.",
@@ -301,7 +301,7 @@ class TestLLMHarmonics:
         routes._harmonic_state = HarmonicState()
         configure(HarmonicConfig(llm_harmonics_blend=0.0))
 
-        fear_vector = [0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
+        fear_vector = [0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
         mock_response = json.dumps({"responses": [{
             "agent_id": "Lydia",
             "utterance": "Fine.",

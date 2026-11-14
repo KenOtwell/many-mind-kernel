@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from shared.constants import EMOTIONAL_DIM, ZERO_SEMAGRAM
+from shared.constants import EMOTIONAL_DIM, RESIDUAL_INDEX, ZERO_SEMAGRAM
 from mindcore.harmonic_buffer import (
     AxisModulators,
     DynamicModulators,  # compat alias
@@ -30,7 +30,7 @@ def _angry_semagram() -> list[float]:
     sem = [0.0] * EMOTIONAL_DIM
     sem[1] = 0.8  # anger
     sem[0] = 0.1  # slight fear
-    sem[8] = 0.3  # some residual
+    sem[RESIDUAL_INDEX] = 0.3  # some residual
     return sem
 
 
@@ -39,7 +39,7 @@ def _calm_semagram() -> list[float]:
     sem = [0.0] * EMOTIONAL_DIM
     sem[6] = 0.6  # joy
     sem[7] = 0.7  # safety
-    sem[8] = 0.2  # low residual
+    sem[RESIDUAL_INDEX] = 0.2  # low residual
     return sem
 
 
@@ -234,11 +234,11 @@ class TestHarmonicState:
 # ---------------------------------------------------------------------------
 
 class TestPerAxisModulation:
-    def test_default_alpha_is_uniform_9d(self):
+    def test_default_alpha_is_uniform(self):
         """Default alpha arrays should be uniform (same value per axis)."""
         buf = HarmonicBuffer()
-        assert buf._alpha_fast.shape == (9,)
-        assert buf._alpha_fast[0] == buf._alpha_fast[8]  # All same
+        assert buf._alpha_fast.shape == (EMOTIONAL_DIM,)
+        assert buf._alpha_fast[0] == buf._alpha_fast[RESIDUAL_INDEX]  # All same
 
     def test_per_axis_alpha_produces_asymmetric_tracking(self):
         """Different alpha per axis → some axes track faster than others.
@@ -503,18 +503,19 @@ class TestDynamicModulators:
 
 
 # ---------------------------------------------------------------------------
-# Certainty modulation — LLM uncertainty → residual axis gain
+# Certainty — stored, EMA-smoothed LLM confidence; does NOT alter the buffer
 # ---------------------------------------------------------------------------
 
 class TestCertaintyModulation:
-    """Test that certainty factor modulates the residual axis (dim 8).
+    """Contract for the certainty factor after mindcore's decoupling (4c5ed2e).
 
-    The LLM's genuine uncertainty (from token entropy) scales the residual
-    axis of incoming semagrams. Full certainty preserves the signal;
-    uncertainty attenuates it. Proportional relationships are preserved —
-    only the gain changes. When uncertainty drops the residual, emotional
-    axes relatively dominate the buffer: the NPC becomes more reactive,
-    less grounded. Recovery is natural via EMA smoothing.
+    The LLM's uncertainty (from token entropy) is stored EMA-smoothed on the
+    buffer and consumed by the application layer (pass-2 harmonics blend
+    weight, retrieval balance). It no longer attenuates the residual axis:
+    residual is an input-side signal (semantic complexity of incoming text),
+    certainty an output-side one (confidence in the response), and coupling
+    them dampened the residual exactly when it should be strongest. These
+    tests pin that decoupling: no axis of the buffer depends on certainty.
     """
 
     def test_default_certainty_is_one(self):
@@ -546,13 +547,13 @@ class TestCertaintyModulation:
         buf = HarmonicBuffer()
         buf.set_certainty(1.0)
         sem = [0.0] * EMOTIONAL_DIM
-        sem[8] = 0.5  # residual
+        sem[RESIDUAL_INDEX] = 0.5  # residual
         buf.update(sem)
         # Fast trace should reflect full residual (first update = direct set)
-        assert buf.fast[8] == pytest.approx(0.5, abs=0.001)
+        assert buf.fast[RESIDUAL_INDEX] == pytest.approx(0.5, abs=0.001)
 
-    def test_low_certainty_attenuates_residual(self):
-        """Low certainty → residual enters buffer at reduced strength."""
+    def test_low_certainty_does_not_attenuate_residual(self):
+        """Low certainty leaves the residual axis untouched (decoupled)."""
         buf_full = HarmonicBuffer()
         buf_full._certainty = 1.0  # bypass EMA for deterministic test
         buf_low = HarmonicBuffer()
@@ -565,36 +566,37 @@ class TestCertaintyModulation:
         buf_low.update(neutral, now=t0)
 
         sem = [0.0] * EMOTIONAL_DIM
-        sem[8] = 0.8  # strong residual
+        sem[RESIDUAL_INDEX] = 0.8  # strong residual
         buf_full.update(sem, now=t0)
         buf_low.update(sem, now=t0)
 
-        # Low-certainty buffer should have less residual
-        assert buf_low.fast[8] < buf_full.fast[8]
-        # At 30% certainty, the residual signal is heavily attenuated
-        ratio = buf_low.fast[8] / buf_full.fast[8] if buf_full.fast[8] > 0 else 0
-        assert ratio < 0.5  # Meaningfully attenuated
+        # The residual is identical, and actually present (not zeroed).
+        assert buf_low.fast[RESIDUAL_INDEX] == pytest.approx(buf_full.fast[RESIDUAL_INDEX], abs=1e-6)
+        assert buf_low.fast[RESIDUAL_INDEX] > 0.1
 
-    def test_zero_certainty_suppresses_residual(self):
-        """Certainty=0.0 → residual zeroed, emotions dominate."""
+    def test_zero_certainty_does_not_suppress_residual(self):
+        """Certainty=0.0 does not zero the residual; it matches a fully confident buffer."""
         buf = HarmonicBuffer()
         buf._certainty = 0.0  # direct set for deterministic test
+        reference = HarmonicBuffer()
 
         neutral = [0.0] * EMOTIONAL_DIM
         t0 = 100.0
         buf.update(neutral, now=t0)
+        reference.update(neutral, now=t0)
 
-        sem = [0.1, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.9]
+        sem = [0.1, 0.2] + [0.0] * (RESIDUAL_INDEX - 2) + [0.9]
+        assert len(sem) == EMOTIONAL_DIM
         buf.update(sem, now=t0)
+        reference.update(sem, now=t0)
 
-        # Residual should be near zero (suppressed)
-        assert abs(buf.fast[8]) < 0.05
-        # But emotional axes should still be present
-        assert buf.fast[0] > 0.01  # fear
-        assert buf.fast[1] > 0.01  # anger
+        assert buf.fast[RESIDUAL_INDEX] > 0.1
+        assert buf.fast[RESIDUAL_INDEX] == pytest.approx(reference.fast[RESIDUAL_INDEX], abs=1e-6)
+        assert buf.fast[0] > 0.01  # fear still present
+        assert buf.fast[1] > 0.01  # anger still present
 
-    def test_certainty_does_not_affect_emotional_axes(self):
-        """Certainty modulation only touches dim 8, not dims 0-7."""
+    def test_certainty_does_not_affect_any_axis(self):
+        """No buffer axis (named axes or residual) depends on certainty."""
         buf_full = HarmonicBuffer()
         buf_full._certainty = 1.0
         buf_low = HarmonicBuffer()
@@ -609,8 +611,8 @@ class TestCertaintyModulation:
         buf_full.update(sem, now=t0)
         buf_low.update(sem, now=t0)
 
-        # Emotional axes (0-7) should be identical regardless of certainty
-        for dim in range(8):
+        # Every axis should be identical regardless of certainty
+        for dim in range(EMOTIONAL_DIM):
             assert buf_full.fast[dim] == pytest.approx(buf_low.fast[dim], abs=1e-6), \
                 f"dim {dim} differs: {buf_full.fast[dim]} vs {buf_low.fast[dim]}"
 

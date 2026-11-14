@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 
+from shared.constants import EMOTIONAL_DIM
 from shared.schemas import TypedEvent
 from progeny.src.event_accumulator import AgentBuffer, TurnContext
 from progeny.src.agent_scheduler import ScheduledAgent
@@ -125,7 +126,7 @@ class TestAgentBlocks:
         assert "tier" in agent
         assert "ticks_since_last_action" in agent
         assert "harmonic_state" in agent
-        assert len(agent["harmonic_state"]["base_vector"]) == 9
+        assert len(agent["harmonic_state"]["base_vector"]) == EMOTIONAL_DIM
 
     def test_agent_block_includes_dialogue_history(self):
         ctx = _make_context()
@@ -454,7 +455,7 @@ class TestTierScaling:
         """Tier 0 agent gets full buffer traces (fast/medium/slow)."""
         from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
-        state.update("Lydia", [0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3])
+        state.update("Lydia", [0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3])
 
         ctx = _make_context()
         roster = [ScheduledAgent(agent_id="Lydia", tier=0, ticks_since_last_action=0)]
@@ -471,7 +472,7 @@ class TestTierScaling:
         """Tier 1 agent gets base_vector + curvature, no buffer traces."""
         from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
-        state.update("Belethor", [0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.3, 0.0, 0.2])
+        state.update("Belethor", [0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2])
 
         ctx = _make_context(active_npc_ids=["Belethor"])
         roster = [ScheduledAgent(agent_id="Belethor", tier=1, ticks_since_last_action=2)]
@@ -479,7 +480,7 @@ class TestTierScaling:
         agents = self._parse_agents(messages)
         belethor = agents["Belethor"]
 
-        assert len(belethor["harmonic_state"]["base_vector"]) == 9
+        assert len(belethor["harmonic_state"]["base_vector"]) == EMOTIONAL_DIM
         assert "curvature" in belethor["harmonic_state"]
         assert "buffers" not in belethor["harmonic_state"]
 
@@ -487,7 +488,7 @@ class TestTierScaling:
         """Tier 2 agent gets base_vector only."""
         from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
-        state.update("Ysolda", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.1])
+        state.update("Ysolda", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1])
 
         ctx = _make_context(active_npc_ids=["Ysolda"])
         roster = [ScheduledAgent(agent_id="Ysolda", tier=2, ticks_since_last_action=5)]
@@ -495,7 +496,7 @@ class TestTierScaling:
         agents = self._parse_agents(messages)
         ysolda = agents["Ysolda"]
 
-        assert len(ysolda["harmonic_state"]["base_vector"]) == 9
+        assert len(ysolda["harmonic_state"]["base_vector"]) == EMOTIONAL_DIM
         assert "buffers" not in ysolda["harmonic_state"]
         assert "curvature" not in ysolda["harmonic_state"]
 
@@ -503,7 +504,7 @@ class TestTierScaling:
         """Tier 3 agent: minimal stub — just agent_id, tier, ticks, base_vector."""
         from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
-        state.update("Heimskr", [0.0, 0.0, 0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.9])
+        state.update("Heimskr", [0.0, 0.0, 0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.9])
 
         ctx = _make_context(active_npc_ids=["Heimskr"])
         roster = [ScheduledAgent(agent_id="Heimskr", tier=3, ticks_since_last_action=47)]
@@ -513,7 +514,7 @@ class TestTierScaling:
 
         assert heimskr["tier"] == 3
         assert heimskr["ticks_since_last_action"] == 47
-        assert len(heimskr["harmonic_state"]["base_vector"]) == 9
+        assert len(heimskr["harmonic_state"]["base_vector"]) == EMOTIONAL_DIM
         # Stub should NOT have these fields
         assert "recent_events" not in heimskr
         assert "dialogue_history" not in heimskr
@@ -647,7 +648,7 @@ class TestGroupDisplay:
         """NPCs with emotional state show their fast buffer in group display."""
         from mindcore.harmonic_buffer import HarmonicState
         state = HarmonicState()
-        angry = [0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3]
+        angry = [0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3]
         state.update("Lydia", angry)
 
         ctx = _make_context()
@@ -659,7 +660,7 @@ class TestGroupDisplay:
         assert "group_display" in gc
         assert len(gc["group_display"]) == 1
         assert gc["group_display"][0]["name"] == "Lydia"
-        assert len(gc["group_display"][0]["demeanor"]) == 9
+        assert len(gc["group_display"][0]["demeanor"]) == EMOTIONAL_DIM
 
     def test_zero_state_npcs_excluded_from_display(self):
         """NPCs with no emotional state yet don't appear in group display."""

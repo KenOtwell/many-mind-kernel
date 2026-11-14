@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import json
 
-from shared.constants import EMOTIONAL_DIM
+import pytest
+
+from shared.constants import EMOTIONAL_DIM, RESIDUAL_INDEX
 from shared.schemas import TypedEvent
 from progeny.src.agent_scheduler import ScheduledAgent
 from progeny.src.event_accumulator import AgentBuffer, TurnContext
@@ -40,8 +42,8 @@ BELETHOR_PRESETS = dict(aggression=0, confidence=1, morality=2, mood=3, assistan
 YSOLDA_PRESETS = dict(aggression=0, confidence=2, morality=3, mood=3, assistance=1)
 HEIMSKR_PRESETS = dict(aggression=0, confidence=2, morality=3, mood=3, assistance=0)
 
-AMBUSH_SEMAGRAM = [0.7, 0.5, 0.0, 0.0, 0.4, 0.0, 0.0, -0.2, 0.5]
-CALM_SEMAGRAM = [0.0, 0.0, 0.3, 0.0, 0.1, 0.0, 0.5, 0.6, 0.2]
+AMBUSH_SEMAGRAM = [0.7, 0.5, 0.0, 0.0, 0.4, 0.0, 0.0, -0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]
+CALM_SEMAGRAM = [0.0, 0.0, 0.3, 0.0, 0.1, 0.0, 0.5, 0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2]
 NEUTRAL_SEMAGRAM = [0.0] * EMOTIONAL_DIM
 
 
@@ -271,8 +273,8 @@ class TestEndToEndModulatorsTierScaling:
         # T0 should be at least 2x bigger than T3
         assert t0_size > 2 * t3_size
 
-    def test_certainty_modulates_residual_in_prompt_data(self):
-        """Uncertainty feeds back into the buffer → prompt reflects attenuated residual."""
+    def test_certainty_does_not_change_residual_in_prompt_data(self):
+        """Certainty is decoupled from the buffer: residual in the prompt is unaffected."""
         state, ctx, roster = _setup_whiterun_scene()
 
         # Set Lydia to half certainty, Belethor to full certainty
@@ -281,12 +283,12 @@ class TestEndToEndModulatorsTierScaling:
 
         # Feed a semagram with strong residual to both
         residual_heavy = [0.0] * EMOTIONAL_DIM
-        residual_heavy[8] = 0.8  # strong residual (reality content)
+        residual_heavy[RESIDUAL_INDEX] = 0.8  # strong residual (reality content)
         residual_heavy[1] = 0.3  # some anger for context
         for name in ["Lydia", "Belethor", "Ysolda", "Heimskr"]:
             state.update(name, residual_heavy)
 
-        # Build prompt — Lydia's residual should be attenuated vs Belethor's
+        # Build prompt — Lydia's residual should match Belethor's
         deltas = {name: state.get_delta(name) for name in ctx.active_npc_ids}
         messages = build_prompt(ctx, roster, harmonic_state=state,
                                 emotional_deltas=deltas)
@@ -294,11 +296,13 @@ class TestEndToEndModulatorsTierScaling:
         data = json.loads(json_part)
         agents = {a["agent_id"]: a for a in data["agents"]}
 
-        # Lydia (T0) has full buffers — check residual (dim 8)
+        # Lydia (T0) has full buffers — check residual (RESIDUAL_INDEX)
         lydia_base = agents["Lydia"]["harmonic_state"]["base_vector"]
         # Belethor (T1) has base_vector
         belethor_base = agents["Belethor"]["harmonic_state"]["base_vector"]
 
-        # Lydia's residual should be weaker than Belethor's
-        # (both got same input, but Lydia's certainty was 0.5)
-        assert lydia_base[8] < belethor_base[8]
+        # Both got the same input; Lydia's certainty (0.5) must not alter
+        # the residual (mindcore 4c5ed2e decoupled certainty from the buffer).
+        assert lydia_base[RESIDUAL_INDEX] > 0.1
+        assert lydia_base[RESIDUAL_INDEX] == pytest.approx(
+            belethor_base[RESIDUAL_INDEX], abs=1e-3)

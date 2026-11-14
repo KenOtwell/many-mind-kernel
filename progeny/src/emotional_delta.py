@@ -1,7 +1,7 @@
 """
 Bidirectional emotional delta pipeline for Progeny.
 
-Text → embedding → 9d semagram → harmonic buffer update → EmotionalDelta.
+Text → embedding → 15d semagram → harmonic buffer update → EmotionalDelta.
 
 The same pipeline runs in both directions:
   Inbound  — game events and player speech shift agent emotional state.
@@ -93,7 +93,7 @@ def process_texts(
 
     texts = [text for _, text in pairs]
     all_embs = embedding.embed(texts)                        # (N, 384)
-    all_sems = emotional_projection.project_batch(all_embs)  # (N, 9)
+    all_sems = emotional_projection.project_batch(all_embs)  # (N, EMOTIONAL_DIM)
 
     # Group semagrams by agent — one averaged update per agent per tick.
     # Texts are grouped in parallel so the event log records the raw anchors

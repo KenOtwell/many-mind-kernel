@@ -47,7 +47,7 @@ def _sem(val: float = 0.1) -> list[float]:
 
 
 def _emo(*vals: float) -> list[float]:
-    """A 9d emotional vector; positional args fill the leading axes."""
+    """A 15d emotional vector; positional args fill the leading axes."""
     if not vals:
         return [0.2] * EMOTIONAL_DIM
     out = list(vals) + [0.0] * (EMOTIONAL_DIM - len(vals))
@@ -196,19 +196,19 @@ def _mem(
 
 class TestDissonanceProbe:
     def test_memory_dissonance_bounds(self):
-        key = [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+        key = [1.0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
         assert recon.memory_dissonance(key, key) == pytest.approx(0.0, abs=1e-6)
         assert recon.memory_dissonance(
-            key, [0, 1.0, 0, 0, 0, 0, 0, 0, 0],
+            key, [0, 1.0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0],
         ) == pytest.approx(1.0, abs=1e-6)
         assert recon.memory_dissonance(
-            key, [-1.0, 0, 0, 0, 0, 0, 0, 0, 0],
+            key, [-1.0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0],
         ) == pytest.approx(2.0, abs=1e-6)
 
     def test_predicted_reaction_recenters_on_baseline(self):
         # project_fn returns a fixed projected vector; the baseline shifts it.
-        proj = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0]  # joy + safety
-        slow = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]  # already-joyful baseline
+        proj = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # joy + safety
+        slow = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # already-joyful baseline
         pred = recon.predicted_reaction([0.1] * SEMANTIC_DIM, slow, project_fn=lambda e: proj)
         # proj - slow = safety only -> normalized points at the safety axis (dim 7).
         assert pred[7] == pytest.approx(1.0, abs=1e-6)
@@ -216,7 +216,7 @@ class TestDissonanceProbe:
 
     def test_select_dissonant_content_ranks_and_thresholds(self):
         slow = [0.0] * EMOTIONAL_DIM
-        key = [1.0] + [0.0] * 8
+        key = [1.0] + [0.0] * (EMOTIONAL_DIM - 1)
         mems = [
             _mem("low", key, _sem(0.1)),
             _mem("mid", key, _sem(0.2)),
@@ -224,9 +224,9 @@ class TestDissonanceProbe:
         ]
         # slow=0 -> predicted = normalize(projected): aligned / orthogonal / inverted.
         projected = np.array([
-            [1.0] + [0.0] * 8,        # low:  cos 1  -> diss 0
-            [0.0, 1.0] + [0.0] * 7,   # mid:  cos 0  -> diss 1
-            [-1.0] + [0.0] * 8,       # high: cos -1 -> diss 2
+            [1.0] + [0.0] * (EMOTIONAL_DIM - 1),        # low:  cos 1  -> diss 0
+            [0.0, 1.0] + [0.0] * (EMOTIONAL_DIM - 2),   # mid:  cos 0  -> diss 1
+            [-1.0] + [0.0] * (EMOTIONAL_DIM - 1),       # high: cos -1 -> diss 2
         ], dtype=np.float32)
 
         def fake_batch(embs):
@@ -242,32 +242,32 @@ class TestDissonanceProbe:
 
     def test_select_dissonant_excludes_ids(self):
         slow = [0.0] * EMOTIONAL_DIM
-        key = [1.0] + [0.0] * 8
+        key = [1.0] + [0.0] * (EMOTIONAL_DIM - 1)
         mems = [_mem("a", key, _sem(0.1)), _mem("b", key, _sem(0.2))]
         out = recon.select_dissonant(
             mems, slow, threshold=0.5, exclude_ids={"a"},
-            project_batch_fn=lambda e: np.array([[-1.0] + [0.0] * 8] * e.shape[0], dtype=np.float32),
+            project_batch_fn=lambda e: np.array([[-1.0] + [0.0] * (EMOTIONAL_DIM - 1)] * e.shape[0], dtype=np.float32),
         )
         assert [r.point_id for r in out] == ["b"]
 
     def test_content_mode_projects_once(self):
         slow = [0.0] * EMOTIONAL_DIM
-        key = [1.0] + [0.0] * 8
+        key = [1.0] + [0.0] * (EMOTIONAL_DIM - 1)
         mems = [_mem(str(i), key, _sem(0.1 + i * 0.01)) for i in range(5)]
         calls = {"n": 0}
 
         def counting_batch(embs):
             calls["n"] += 1
-            return np.tile(np.array([[-1.0] + [0.0] * 8], dtype=np.float32), (embs.shape[0], 1))
+            return np.tile(np.array([[-1.0] + [0.0] * (EMOTIONAL_DIM - 1)], dtype=np.float32), (embs.shape[0], 1))
 
         recon.select_dissonant(mems, slow, project_batch_fn=counting_batch)
         assert calls["n"] == 1  # compute-once: a single batched projection
 
     def test_dcross_mode_skips_projection(self):
-        slow = [1.0] + [0.0] * 8
+        slow = [1.0] + [0.0] * (EMOTIONAL_DIM - 1)
         mems = [
-            _mem("aligned", [1.0] + [0.0] * 8),    # cos 1  -> diss 0
-            _mem("opposed", [-1.0] + [0.0] * 8),   # cos -1 -> diss 2
+            _mem("aligned", [1.0] + [0.0] * (EMOTIONAL_DIM - 1)),    # cos 1  -> diss 0
+            _mem("opposed", [-1.0] + [0.0] * (EMOTIONAL_DIM - 1)),   # cos -1 -> diss 2
         ]
         calls = {"n": 0}
 
@@ -385,15 +385,15 @@ class TestRecallPrefersRecon:
 
 class TestDriftControl:
     def test_clamp_drift_blends_not_replaces(self):
-        stored = [1.0] + [0.0] * 8
-        proposed = [0.0, 1.0] + [0.0] * 7
+        stored = [1.0] + [0.0] * (EMOTIONAL_DIM - 1)
+        proposed = [0.0, 1.0] + [0.0] * (EMOTIONAL_DIM - 2)
         out = recon.clamp_drift(stored, proposed, blend=0.5, max_drift=10.0)
         assert out[0] == pytest.approx(0.5, abs=1e-6)
         assert out[1] == pytest.approx(0.5, abs=1e-6)
 
     def test_clamp_drift_caps_per_pass(self):
         stored = [0.0] * EMOTIONAL_DIM
-        proposed = [10.0] + [0.0] * 8
+        proposed = [10.0] + [0.0] * (EMOTIONAL_DIM - 1)
         out = recon.clamp_drift(stored, proposed, blend=1.0, max_drift=0.5)
         moved = float(np.linalg.norm(np.array(out) - np.array(stored)))
         assert moved == pytest.approx(0.5, abs=1e-6)
@@ -431,19 +431,19 @@ class TestRecurrenceBlock:
 
 
 def _fake_single(_emb):
-    return [1.0] + [0.0] * 8
+    return [1.0] + [0.0] * (EMOTIONAL_DIM - 1)
 
 
 def _fake_batch(embs):
-    return np.tile(np.array([[1.0] + [0.0] * 8], dtype=np.float32), (embs.shape[0], 1))
+    return np.tile(np.array([[1.0] + [0.0] * (EMOTIONAL_DIM - 1)], dtype=np.float32), (embs.shape[0], 1))
 
 
 def _fake_single_b(_emb):
-    return [0.0, 0.0, 1.0] + [0.0] * 6
+    return [0.0, 0.0, 1.0] + [0.0] * (EMOTIONAL_DIM - 3)
 
 
 def _fake_batch_b(embs):
-    return np.tile(np.array([[0.0, 0.0, 1.0] + [0.0] * 6], dtype=np.float32), (embs.shape[0], 1))
+    return np.tile(np.array([[0.0, 0.0, 1.0] + [0.0] * (EMOTIONAL_DIM - 3)], dtype=np.float32), (embs.shape[0], 1))
 
 
 def _zero_slow(_agent_id):
@@ -455,12 +455,12 @@ class TestRunReconsolidation:
         agent = "Lydia"
         await writer.write_raw_event(
             agent_id=agent, content="A calm market day.", semantic_vector=_sem(0.2),
-            emotional_vector=[1.0] + [0.0] * 8, game_ts=1.0, event_type="event",
+            emotional_vector=[1.0] + [0.0] * (EMOTIONAL_DIM - 1), game_ts=1.0, event_type="event",
             point_id=_pid("raw-consonant"),
         )
         await writer.write_raw_event(
             agent_id=agent, content="The duel that terrified me.", semantic_vector=_sem(0.3),
-            emotional_vector=[0.0, 1.0] + [0.0] * 7, game_ts=2.0, event_type="event",
+            emotional_vector=[0.0, 1.0] + [0.0] * (EMOTIONAL_DIM - 2), game_ts=2.0, event_type="event",
             point_id=_pid("raw-dissonant"),
         )
         report = await recon.run_reconsolidation(
@@ -480,7 +480,7 @@ class TestRunReconsolidation:
         agent = "Lydia"
         await writer.write_raw_event(
             agent_id=agent, content="An inverted feeling.", semantic_vector=_sem(0.3),
-            emotional_vector=[-1.0] + [0.0] * 8, game_ts=2.0, event_type="event",
+            emotional_vector=[-1.0] + [0.0] * (EMOTIONAL_DIM - 1), game_ts=2.0, event_type="event",
             point_id=_pid("raw-inverted"),
         )
         report = await recon.run_reconsolidation(
@@ -498,11 +498,11 @@ class TestRunReconsolidation:
         src = _pid("raw-inverted")
         await writer.write_raw_event(
             agent_id=agent, content="An inverted feeling.", semantic_vector=_sem(0.3),
-            emotional_vector=[-1.0] + [0.0] * 8, game_ts=2.0, event_type="event", point_id=src,
+            emotional_vector=[-1.0] + [0.0] * (EMOTIONAL_DIM - 1), game_ts=2.0, event_type="event", point_id=src,
         )
         await writer.write_reconsolidated_summary(
             agent_id=agent, gist_text="prior attempt", semantic_vector=_sem(0.3),
-            emotional_vector=[-0.5] + [0.0] * 8, raw_point_ids=[src], game_ts=50.0,
+            emotional_vector=[-0.5] + [0.0] * (EMOTIONAL_DIM - 1), raw_point_ids=[src], game_ts=50.0,
             version=1, residual_dissonance=0.9, recon_stalled=True, point_id=_pid("recon-prior"),
         )
         report = await recon.run_reconsolidation(
@@ -519,7 +519,7 @@ class TestRunReconsolidation:
         agent = "Lydia"
         await writer.write_raw_event(
             agent_id=agent, content="A duel.", semantic_vector=_sem(0.3),
-            emotional_vector=[0.0, 1.0] + [0.0] * 7, game_ts=2.0, event_type="event",
+            emotional_vector=[0.0, 1.0] + [0.0] * (EMOTIONAL_DIM - 2), game_ts=2.0, event_type="event",
             point_id=_pid("raw-ortho"),
         )
         common = dict(
@@ -539,7 +539,7 @@ class TestRunReconsolidation:
         src = _pid("raw-ortho")
         await writer.write_raw_event(
             agent_id=agent, content="A duel.", semantic_vector=_sem(0.3),
-            emotional_vector=[0.0, 1.0] + [0.0] * 7, game_ts=2.0, event_type="event", point_id=src,
+            emotional_vector=[0.0, 1.0] + [0.0] * (EMOTIONAL_DIM - 2), game_ts=2.0, event_type="event", point_id=src,
         )
         # Pass 1: current reaction points at axis 0 -> resolve toward it (v1).
         await recon.run_reconsolidation(

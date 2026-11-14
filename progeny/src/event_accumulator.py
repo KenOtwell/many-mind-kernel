@@ -288,7 +288,7 @@ class EventAccumulator:
         the shared group timeline.
 
         Behavior adoption: adopted as the agent's own output (role=assistant).
-        felt_at_speaking carries the speaker's 9d fast buffer at output time,
+        felt_at_speaking carries the speaker's 15d fast buffer at output time,
         encoding the emotional state from which the utterance emerged. This
         is the self-perspective: how it felt to say this.
         """

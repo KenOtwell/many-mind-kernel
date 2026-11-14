@@ -11,7 +11,7 @@ Wire flow:
   Falcon → Qdrant (key lookup for response text) → SKSE wire format
 
 Both services write through the same Qdrant enrichment wrapper
-(text in → auto-embed 384d semantic + 9d emotional → store → return key).
+(text in → auto-embed 384d semantic + 15d emotional → store → return key).
 Progeny owns cognitive work: emotional deltas, retrieval, scheduling,
 prompting, LLM interaction. Shared emotional projection in shared/emotional.py.
 """
@@ -23,6 +23,8 @@ from typing import Any, Literal, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
+from shared.constants import EMOTIONAL_DIM
 
 
 # ---------------------------------------------------------------------------
@@ -288,9 +290,9 @@ class TickPackage(BaseModel):
 
 class EmotionalState(BaseModel):
     """Per-agent emotional state snapshot, computed by Progeny."""
-    base_vector: list[float] = Field(..., min_length=9, max_length=9,
-                                     description="Current 9d semagram")
-    delta: list[float] = Field(..., min_length=9, max_length=9,
+    base_vector: list[float] = Field(..., min_length=EMOTIONAL_DIM, max_length=EMOTIONAL_DIM,
+                                     description="Current 15d semagram")
+    delta: list[float] = Field(..., min_length=EMOTIONAL_DIM, max_length=EMOTIONAL_DIM,
                                description="Change this tick")
     curvature: float = Field(0.0, description="1st derivative — priority gradient")
     snap: float = Field(0.0, description="2nd derivative — event boundary detector")
@@ -409,7 +411,7 @@ class ActorValueDeltas(BaseModel):
 
 class UpdatedHarmonics(BaseModel):
     """LLM-proposed emotional state update (proposed by LLM, validated by Progeny)."""
-    base_vector: list[float] = Field(..., min_length=9, max_length=9)
+    base_vector: list[float] = Field(..., min_length=EMOTIONAL_DIM, max_length=EMOTIONAL_DIM)
 
 
 class NewMemory(BaseModel):

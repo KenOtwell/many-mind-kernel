@@ -322,7 +322,7 @@ def _apply_llm_harmonics(
 ) -> None:
     """Apply LLM-proposed updated_harmonics as Pass 2 emotional correction.
 
-    Pass 1 (mechanical): text → embed → 9d projection → EMA update.
+    Pass 1 (mechanical): text → embed → 15d projection → EMA update.
         Captures the content's emotional signature (speaker intent).
     Pass 2 (this): LLM evaluates the agent's contextual reaction.
         The proposed base_vector is blended into the harmonic buffer,
@@ -351,7 +351,7 @@ def _apply_llm_harmonics(
             continue
 
         proposed = resp.updated_harmonics.base_vector
-        if len(proposed) != 9:
+        if len(proposed) != EMOTIONAL_DIM:
             continue
 
         # Per-agent blend: scale by certainty factor.
@@ -1009,7 +1009,7 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
     # Identity kernels for first-seen NPCs (Phase 6a) — pure ID fetch, cached.
     await _bootstrap_identities_for_new_npcs(turn_context)
 
-    # Emotional pipeline: inbound text → 9d projection → update harmonic buffers
+    # Emotional pipeline: inbound text → 15d projection → update harmonic buffers
     emotional_delta.process_inbound(turn_context, _harmonic_state)
 
     # Scene-level compression — when group composition changes significantly,
@@ -1284,7 +1284,7 @@ async def _ingest_inner(package: TickPackage) -> TurnResponse | AckResponse:
                     agent_id=agent_id,
                     arc_start_ts=0.0,  # TODO: track arc start per agent
                     arc_end_ts=delta.semagram[0] if delta.semagram else 0.0,
-                    semantic_vector=delta.semagram,  # 9d used as placeholder
+                    semantic_vector=delta.semagram,  # 15d used as placeholder
                     emotional_vector=delta.semagram,
                     game_ts=time.time(),
                 )

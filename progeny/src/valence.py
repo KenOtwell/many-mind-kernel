@@ -41,18 +41,21 @@ from dataclasses import dataclass, field
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from shared.constants import COLLECTION_NPC_MEMORIES
+from shared.constants import COLLECTION_NPC_MEMORIES, RESIDUAL_INDEX
 from progeny.src.acquaintance import mentions
 from progeny.src.qdrant_client import get_points_by_ids, search_vector
 
 logger = logging.getLogger(__name__)
 
-# Warmth/wariness membership over the 9d semagram (axis order: shared.constants
+# Warmth/wariness membership over the 15d semagram (axis order: shared.constants
 # EMOTIONAL_AXES). Mirrors the Living Doc's MAX-tier valence-trajectory
 # compression — the single documented valence convention in the codebase.
+# Indices 0-7 are unchanged from the 15d schema. The six axes added in schema v2
+# (surprise, trust, shame, awe, nostalgia, awkwardness) are intentionally NOT
+# members yet: classifying them is a modelling decision, not a migration step.
 POSITIVE_AXES: tuple[int, ...] = (2, 4, 6, 7)  # love, excitement, joy, safety
 NEGATIVE_AXES: tuple[int, ...] = (0, 1, 3, 5)  # fear, anger, disgust, sadness
-RESIDUAL_AXIS: int = 8                          # domain content — affect-neutral
+RESIDUAL_AXIS: int = RESIDUAL_INDEX             # domain content — affect-neutral
 
 # Emotion-first percept cue: the agent's affect drives the recall, the percept
 # text only sharpens it. Matches the recognition path's lambda (routes.py).
@@ -79,7 +82,7 @@ def valence_components(semagram: list[float]) -> tuple[float, float, float]:
 
 
 def warmth(semagram: list[float]) -> float:
-    """Signed warmth (positive) vs wariness (negative) of a 9d semagram."""
+    """Signed warmth (positive) vs wariness (negative) of a 15d semagram."""
     pos, neg, _ = valence_components(semagram)
     return pos - neg
 
@@ -170,7 +173,7 @@ def build_percept_text(subject: str, class_signal: str = "") -> str:
 
 
 def _emotional_vector(vector: object) -> list[float] | None:
-    """Pull the 9d 'emotional' named vector from a get_points_by_ids result."""
+    """Pull the 15d 'emotional' named vector from a get_points_by_ids result."""
     if isinstance(vector, dict):
         emo = vector.get("emotional")
         if emo is not None:
@@ -238,7 +241,7 @@ async def percept_cued_valence(
         semantic_query:  384d embedding of the percept text (perceived person,
                          sharpened by ``build_percept_text``). Anchors
                          generalization on the semantic axis.
-        emotional_query: 9d affect query (typically the observer's deviation,
+        emotional_query: 15d affect query (typically the observer's deviation,
                          fast - slow), queried emotion-first.
         lambda_t:        Emotional vs semantic blend; defaults emotion-first.
         broad_limit:     Candidates fetched per axis before blending.
