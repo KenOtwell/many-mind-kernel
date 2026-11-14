@@ -3,7 +3,7 @@
 
 **Purpose:** Capture spontaneous insights, design principles, and technical requirements that define the path to artificial general intelligence. Track what we're building, why, and how we know it works.
 
-**Last Updated:** 2025-12-21  
+**Last Updated:** 2026-08-20  
 **Status:** Active Development - Recurrent K/V Cache Implementation
 
 ---
@@ -216,6 +216,13 @@ If semantic embeddings are generalized coordinates q and emotional deviations ar
 * `quantum/ritual_log.py`: `GoalActivationEntry.expectation_vec + dissonance_vec + dissonance_mag`; `pending_singularities()`
 * `quantum/goals.py`: `acknowledge_epistemic_gap` seed goal
 * `quantum/converse.py`: blended recall query, cross-term, singularity detection, epistemic goal firing
+
+**April 2026 leftovers (folded 2026-08-20 from retired root sibling):**
+- Gate-as-scar (Kato): a mind is the history of its exit-gate adaptations. The gate is not a rule — it is a scar.
+- Joel Miller validation (*The Last of Us*): traumatized slow-buffer anchor permanently skews λ(t) → 1.0; cross-buffer decoherence generates panic in safe environments; LLM-layer rationalizations serve as compression artifacts; exit gates hijacked by predicted loss cost. Emergent moral attractor (individual over collective) arises from lived trajectory dynamics, not computed logic.
+- Dissonance metrics (April DP-11, not a second principle): D_t = prediction error + cross-buffer decoherence + affordance tension; E_t = −ΔD/Δt; M = monotonicity of D; R_t = reality coupling; cognitive health H = f(Ē, M, R̄, D̄).
+- Attractor-flow (Ken Otwell, April 2026): Cognition is a flow through an attractor landscape shaped by emotional curvature. Thoughts = local flows. Beliefs = stable flows. Trauma = rigid high-curvature flow. Insight = curvature inversion. Wisdom = low-energy wide-basin flow. Delusion = flow decoupled from reality gradients. Identity = the long-term integral of all flows.
+- Still pending if unused: D_t decomposition as observable signals; E_t / M / R_t per session; H as substrate tuning objective; unified gate-adaptation law `p = (w_L, w_H, w_C)` (see ATTRACTOR_FLOW_DYNAMICS.md).
 
 ---
 
@@ -449,6 +456,11 @@ gamma = 0.5 if resolved else 0.95  # Decay rate
 - ✅ Dissonance detection
 - ✅ Phase-coherent beam search
 - ⚠️ K/V cache integration (next)
+- ✅ Generalized beyond memory replay: `mindcore/operators.py` (Aug 2026)
+  reifies dissonance detection + beam pruning as one basis-agnostic
+  mechanism that also gates candidates and trains token-to-token operators
+  via a sleep-consolidated delta rule -- see the living doc's "Structural
+  Cognition: Role, Case, Identity, and Operator Learning (SCPC)" section
 
 **Validation Criteria:**
 - Faster learning than single-pass experience
@@ -777,6 +789,11 @@ When the dynamics of elements cannot be modeled independently because their traj
   - Metacognitive uncertainty (logprob-based) is a micro-singularity in the epistemic subspace — now wired into the goal/ritual system via `acknowledge_epistemic_gap`.
 - **Impact:** Unified the emotional architecture under a variational principle. The Lagrangian is the action of thought trajectories; the Hamiltonian is the emotional state; memory is the record of phase-space paths; the sleep compiler compresses minimum-action paths into rituals. Establishes the theoretical foundation for future resolution ritual classification and symplectic metric in goal scoring.
 - **Updated requirements/principles:** DP-10 added. Pending: symplectic metric (replacing weighted-sum of independent channels), Lagrangian action minimization as attention gate, resolution ritual class in sleep compiler.
+
+### 2026-08-20: April sibling retired
+- Root `AGI_REQUIREMENTS.md` (2026-04-09) retired to attic. Same document, drifted. Home is this file.
+- Folded April-only leftovers: Joel Miller validation, gate-as-scar, D_t / E_t / M / R_t / H, attractor-flow paragraph. Not a second DP-11.
+- No third name.
 
 ### Future Entries
 This log tracks how requirements evolve based on:
