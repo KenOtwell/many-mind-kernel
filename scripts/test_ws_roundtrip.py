@@ -1,11 +1,12 @@
 """Direct WebSocket round-trip test: bypass Falcon, talk to Progeny."""
 import asyncio
 import json
+import os
 from uuid import uuid4
 import websockets
 
 async def test():
-    url = "ws://192.168.0.220:8001/ws"
+    url = f"ws://{os.environ.get('PROGENY_HOST', 'Progeny.kenos.one')}:{os.environ.get('PROGENY_PORT', '8001')}/ws"
     try:
         ws = await websockets.connect(url, ping_interval=30, ping_timeout=60)
         print(f"Connected to {url}")

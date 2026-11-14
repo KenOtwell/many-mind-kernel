@@ -15,11 +15,11 @@
 
 ## Network Topology
 
-- **StealthVI (Gaming PC)** — Falcon service (:8000), Qdrant (:6333/:6334), Skyrim VR
-- **Progeny (Beelink 395AI)** — Progeny service (:8001), llama-server/Mistral (:8080)
+- **StealthVI (Gaming PC, a.k.a. Falcon)** — Falcon service (:8000), Qdrant (:6333/:6334), Skyrim VR. Router DNS name `Falcon.kenos.one` (address DHCP-reserved on the router)
+- **Progeny (Beelink 395AI)** — Progeny service (:8001), llama-server/Mistral (:8080). Router DNS name `Progeny.kenos.one` (address DHCP-reserved on the router)
 - **Quest-3** — VR headset via Virtual Desktop
-- Falcon connects to Progeny via WebSocket: `ws://<beelink>:8001/ws`
-- Progeny connects to Qdrant via REST: `http://<stealthvi>:6333`
+- Falcon connects to Progeny via WebSocket: `ws://Progeny.kenos.one:8001/ws`
+- Progeny connects to Qdrant via REST: `http://Falcon.kenos.one:6333` (set with `QDRANT_HOST`)
 
 ## Startup Procedure
 
@@ -39,7 +39,7 @@ Or manually:
 
 # Terminal 2: Progeny
 cd ~/Neo
-QDRANT_HOST=<stealthvi-ip> .venv/bin/python -m uvicorn progeny.api.server:app --host 0.0.0.0 --port 8001
+QDRANT_HOST=Falcon.kenos.one .venv/bin/python -m uvicorn progeny.api.server:app --host 0.0.0.0 --port 8001
 ```
 
 ### On StealthVI (Falcon)
@@ -50,7 +50,7 @@ C:\Tools\qdrant\qdrant.exe
 
 # Terminal 2: Falcon
 cd C:\Users\Ken\Projects\many-mind-kernel
-$env:PROGENY_HOST="<beelink-ip>"
+$env:PROGENY_HOST="Progeny.kenos.one"
 python -m uvicorn falcon.api.server:app --host 0.0.0.0 --port 8000
 
 # Then launch Skyrim from MO2 (Panda's Sovngarde profile)
@@ -68,7 +68,7 @@ python -m uvicorn falcon.api.server:app --host 0.0.0.0 --port 8000
 # From Beelink:
 curl http://127.0.0.1:8001/health          # Progeny + LLM status + turn counter
 curl http://127.0.0.1:8080/health           # llama-server
-curl http://<stealthvi>:6333/collections    # Qdrant
+curl http://Falcon.kenos.one:6333/collections  # Qdrant
 
 # WebSocket connected?
 ss -tn | grep 8001 | grep ESTAB

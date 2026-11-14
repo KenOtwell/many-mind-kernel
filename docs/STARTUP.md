@@ -4,19 +4,22 @@
 
 ## Service Launch Order
 
-1. **Qdrant** (Gaming PC)
+1. **Qdrant** (Gaming PC / Falcon, `Falcon.kenos.one` — address DHCP-reserved on the router)
    ```powershell
    Start-Process -FilePath "C:\Tools\qdrant\qdrant.exe" -WorkingDirectory "C:\Tools\qdrant"
    ```
-   Verify: `Invoke-RestMethod http://127.0.0.1:6333/collections`
+   Verify (on the Gaming PC): `Invoke-RestMethod http://127.0.0.1:6333/collections`
+   Verify (from Progeny): `curl http://Falcon.kenos.one:6333/collections`
+   Progeny finds it through `QDRANT_HOST=Falcon.kenos.one` (`QDRANT_REST_PORT` defaults to 6333).
+   Per-machine host settings live in a gitignored `.env` read by the launch scripts — copy `.env.example`.
 
-2. **Progeny** (Beelink at 192.168.0.220)
+2. **Progeny** (Beelink, `Progeny.kenos.one` — address DHCP-reserved on the router)
    - SSH to Beelink, start Progeny service (port 8001)
-   - Verify: `Invoke-RestMethod http://192.168.0.220:8001/health`
+   - Verify: `Invoke-RestMethod http://Progeny.kenos.one:8001/health`
 
 3. **Falcon** (Gaming PC)
    ```powershell
-   $env:PROGENY_HOST = "192.168.0.220"
+   $env:PROGENY_HOST = "Progeny.kenos.one"
    $env:PROGENY_PORT = "8001"
    Start-Process python -ArgumentList "-m","uvicorn","falcon.api.server:app","--host","0.0.0.0","--port","8000","--app-dir","C:\Users\Ken\Projects\many-mind-kernel" -WindowStyle Normal
    ```
@@ -36,7 +39,7 @@
 ```powershell
 # All three at once:
 "Falcon:";  Invoke-RestMethod http://127.0.0.1:8000/health -ErrorAction SilentlyContinue
-"Progeny:"; Invoke-RestMethod http://192.168.0.220:8001/health -ErrorAction SilentlyContinue
+"Progeny:"; Invoke-RestMethod http://Progeny.kenos.one:8001/health -ErrorAction SilentlyContinue
 "Qdrant:";  Invoke-RestMethod http://127.0.0.1:6333/collections -ErrorAction SilentlyContinue | Select-Object status
 ```
 
@@ -113,8 +116,8 @@ SKSE DLL (GET /comm.php?DATA=<base64>) → Falcon (parse, accumulate, tick)
 ```
 
 - Falcon: `C:\Users\Ken\Projects\many-mind-kernel\falcon\`
-- Progeny: runs on Beelink 192.168.0.220
-- Qdrant: `C:\Tools\qdrant\qdrant.exe` (ports 6333/6334)
+- Progeny: runs on Beelink (`Progeny.kenos.one`)
+- Qdrant: `C:\Tools\qdrant\qdrant.exe` (ports 6333/6334), reachable on the LAN as `Falcon.kenos.one`
 - MO2: `C:\Modlists\PandasSovngarde`
 - CHIM mod: `C:\Modlists\PandasSovngarde\mods\AIAgent`
 - Papyrus compiler: see `docs/The_Many_Mind_Kernel_Living_Doc.md` → Papyrus Build Toolchain section

@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # Launch the MMK Progeny stack: llama-server (Mistral) + Progeny FastAPI service
 #
-# Usage:  ./launch-progeny.sh [--qdrant-host IP]
+# Usage:  ./launch-progeny.sh [QDRANT_HOST]
+#
+# Per-machine overrides come from a gitignored .env next to this script
+# (copy .env.example). A QDRANT_HOST argument wins over .env.
 #
 # Defaults:
-#   Qdrant:  192.168.0.13 (StealthVI)
+#   Qdrant:  Falcon.kenos.one (router DNS name for the Gaming PC / StealthVI)
 #   LLM:     Mistral Nemo 12B Q8 on llama-server :8080
 #   Progeny: FastAPI on :8001
 
 set -euo pipefail
 
-QDRANT_HOST="${1:-192.168.0.104}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a; . "$SCRIPT_DIR/.env"; set +a
+fi
+QDRANT_HOST="${1:-${QDRANT_HOST:-Falcon.kenos.one}}"
 LLAMA_SERVER="$HOME/llama.cpp/build/bin/llama-server"
 MODEL="$HOME/models/gguf/mistral-nemo-12b-instruct-q8.gguf"
 VENV="$HOME/Neo/.venv/bin/python"

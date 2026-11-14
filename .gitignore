@@ -44,6 +44,9 @@ qdrant_data/
 # Sensitive network diagrams (contains local IPs)
 network.jpg
 
+# Per-machine host settings (see .env.example)
+.env
+
 # Event-log sessions (photographic memory — large, generated)
 sessions/
 *.jsonl
