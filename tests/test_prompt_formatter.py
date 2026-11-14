@@ -6,7 +6,10 @@ import json
 from shared.schemas import TypedEvent
 from progeny.src.event_accumulator import AgentBuffer, TurnContext
 from progeny.src.agent_scheduler import ScheduledAgent
-from progeny.src.prompt_formatter import build_prompt, SYSTEM_PROMPT, INSTRUCTION_PROMPT
+from progeny.src.prompt_formatter import (
+    build_prompt, SYSTEM_PROMPT, SYSTEM_PROMPT_BASE, INSTRUCTION_PROMPT,
+    WORLD_LORE, compose_system_prompt, load_world_lore,
+)
 
 
 def _make_context(
@@ -161,6 +164,43 @@ class TestAgentBlocks:
         json_part = messages[1]["content"].split("\n\n")[0]
         data = json.loads(json_part)
         assert data["agents"][0]["ticks_since_last_action"] == 5
+
+
+class TestWorldLore:
+    """The lore is inserted verbatim into the system message and nowhere else."""
+
+    def test_loader_normalizes_line_endings_and_bom(self, tmp_path):
+        p = tmp_path / "lore.txt"
+        p.write_bytes(b"\xef\xbb\xbf### A\r\n- one\r\n\r\n- two\r\n")
+        assert load_world_lore(p) == "### A\n- one\n\n- two"
+
+    def test_loader_missing_file_gives_no_lore(self, tmp_path):
+        assert load_world_lore(tmp_path / "absent.txt") == ""
+
+    def test_env_override_and_disable(self, tmp_path, monkeypatch):
+        p = tmp_path / "lore.txt"
+        p.write_text("custom lore", encoding="utf-8")
+        monkeypatch.setenv("MMK_LORE_FILE", str(p))
+        assert load_world_lore() == "custom lore"
+        monkeypatch.setenv("MMK_LORE_FILE", "")
+        assert load_world_lore() == ""
+
+    def test_compose_appends_after_base(self):
+        assert compose_system_prompt("base", "lore") == "base\n\nlore"
+        assert compose_system_prompt("base", "") == "base"
+
+    def test_repo_lore_is_in_system_message_exactly_once(self):
+        assert WORLD_LORE, "docs/prompts/SkyrimLore.txt should be present"
+        system = build_prompt(_make_context(), _make_roster(["Lydia"]))[0]["content"]
+        assert system == SYSTEM_PROMPT
+        assert system.startswith(SYSTEM_PROMPT_BASE)
+        assert system.endswith(WORLD_LORE)
+        assert system.count(WORLD_LORE) == 1
+        assert "\r" not in system
+
+    def test_lore_not_in_user_message(self):
+        user = build_prompt(_make_context(), _make_roster(["Lydia"]))[1]["content"]
+        assert WORLD_LORE[:80] not in user
 
 
 class TestFactPoolIntegration:

@@ -24,8 +24,11 @@ the prompt carrying forward.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
+from pathlib import Path
 from typing import Any
 
 from shared.constants import EMOTIONAL_AXES, ZERO_SEMAGRAM
@@ -48,7 +51,7 @@ _DEMEANOR_AXES = [a[:3].upper() for a in EMOTIONAL_AXES]  # FEA,ANG,LOV,...
 # System prompt — stable across turns, benefits from KV cache reuse
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are the Many-Mind Kernel — the slow-twitch cognitive layer for multiple NPCs \
+SYSTEM_PROMPT_BASE = """You are the Many-Mind Kernel — the slow-twitch cognitive layer for multiple NPCs \
 in the world of Skyrim. You govern their thoughts, speech, and behavioral \
 dispositions simultaneously. The game engine handles fast-twitch reflexes \
 (combat, pathfinding, physics). You handle contemplation, strategy, and emotion.
@@ -107,6 +110,53 @@ Each agent's ticks_since_last_action tells you how long since you last attended 
 them. Calibrate accordingly.
 
 Be the mind. The engine is the body."""
+
+
+# ---------------------------------------------------------------------------
+# World lore — static common knowledge, inserted verbatim into the system message
+# ---------------------------------------------------------------------------
+# The lore file is plain text for the model, not data for the builder: nothing in it is parsed,
+# templated or summarized. It is read once at import and appended as raw text after the static
+# instructions. It is deliberately NOT a field of the JSON data payload: json.dumps would escape
+# its quotes and newlines (mangling the markdown and adding tokens). The bytes must stay identical
+# from turn to turn so the LLM server's KV prefix cache survives; editing the file invalidates the
+# cached prefix, so treat it as a versioned file.
+# Override the path with MMK_LORE_FILE; set it to an empty string to run without lore.
+DEFAULT_LORE_PATH = Path(__file__).resolve().parents[2] / "docs" / "prompts" / "SkyrimLore.txt"
+
+
+def load_world_lore(path: str | os.PathLike[str] | None = None) -> str:
+    """Return the lore exactly as it should appear in the prompt, or "" if there is none.
+
+    Only line endings are normalized (CRLF/CR to LF) and surrounding whitespace trimmed, so the
+    same file yields the same bytes on Windows and Linux. A missing file degrades to no lore (with
+    a warning) instead of failing startup.
+    """
+    if path is None:
+        env = os.environ.get("MMK_LORE_FILE")
+        if env is not None and not env.strip():
+            return ""  # explicitly disabled
+        path = env or DEFAULT_LORE_PATH
+    try:
+        raw = Path(path).read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        logger.warning("World lore not loaded (%s): %s", path, exc)
+        return ""
+    text = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
+    logger.info(
+        "World lore loaded: %s (%d chars, sha256 %s)",
+        path, len(text), hashlib.sha256(text.encode("utf-8")).hexdigest()[:12],
+    )
+    return text
+
+
+def compose_system_prompt(base: str, lore: str) -> str:
+    """Static instructions followed by the lore block, separated by one blank line."""
+    return f"{base}\n\n{lore}" if lore else base
+
+
+WORLD_LORE = load_world_lore()
+SYSTEM_PROMPT = compose_system_prompt(SYSTEM_PROMPT_BASE, WORLD_LORE)
 
 
 INSTRUCTION_PROMPT = (

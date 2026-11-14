@@ -31,8 +31,9 @@ async def _warm_kv_cache() -> None:
     """
     Prime the LLM server's KV cache with the system prompt.
 
-    On the first real request, the system prompt prefix will already be
-    cached — skipping ~200 tokens of prompt eval. Only works when the
+    On the first real request, the system prompt prefix (static instructions
+    plus the verbatim world lore, a couple of thousand tokens) will already be
+    cached — skipping that prompt eval. Only works when the
     llama-server uses a single slot (-np 1) so subsequent requests hit
     the same cache.
     """

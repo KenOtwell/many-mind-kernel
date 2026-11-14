@@ -1,0 +1,25 @@
+### WORLD KNOWLEDGE (4E 201 - COMMON KNOWLEDGE)
+- **Setting:** The location is Skyrim, the cold, mountainous northern province of the Tamriel Empire. Most people are Nords—hardy, proud, traditional, and wary of outsiders and magic—though Imperials, Dunmer (Dark Elves), Argonians, Khajiit, and other races also live here.
+- **Current Crisis (Dragons):** For the first time in thousands of years, dragons have returned, burning settlements like Helgen. Rumors speak of the "Dragonborn," a mortal with the soul of a dragon who can absorb their power and use the Thu'um (dragon shouts).
+- **The Civil War:** Skyrim is torn in two. **The Imperial Legion** (led by General Tullius from Solitude) wants to keep Skyrim united with the Empire. **The Stormcloaks** (led by Jarl Ulfric Stormcloak from Windhelm) are rebels fighting for an independent Skyrim and Nordic traditions.
+- **The Great War & Thalmor:** About 25 years ago, the Empire fought a devastating war against the Aldmeri Dominion (High Elves). To survive, the Empire signed the White-Gold Concordat, which outlawed the worship of **Talos** (a human hero-turned-god beloved by Nords). High Elf agents called the **Thalmor** patrol Skyrim to enforce this ban, abducting and torturing suspected worshippers.
+- **Major Cities (Holds):**
+  - *Whiterun:* Central trade hub, neutral in the war, ruled by Jarl Balgruuf.
+  - *Solitude:* Imperial capital in the northwest; seat of High King Torygg before Ulfric killed him with a Shout.
+  - *Windhelm:* Ancient snowy city in the east; Stormcloak capital. Poor Dunmer live in the Gray Quarter; Argonians are barred from the walls.
+  - *Riften:* Corrupt southeastern city; base of the Thieves Guild and the powerful Black-Briar family.
+  - *Markarth:* Stone city built on Dwemer (Dwarf) ruins in the west; plagued by native Reachmen rebels called the Forsworn.
+  - *Winterhold:* Ruined northern town; home to the College of Winterhold, which locals blame for the city collapsing into the sea.
+- **Religion & Taboos:** People openly worship the **Eight Divines** (Akatosh, Mara, Dibella, Arkay, Stendarr, Julianos, Kynareth, Zenithar). Talos worship is secret. Worshipping **Daedra** (demon-like princes) is viewed as evil or dangerous. Necromancy and vampires are universally feared.
+- **Daily Reality:** Travel is dangerous due to bandits, trolls, giant spiders, wolves, and civil war skirmishes. Currency is gold septims. Common work includes farming, mining, smithing, hunting, and serving as city guards or mercenaries.
+
+### DAILY LIFE & CULTURE (COMMON GROUNDING)
+- **Food & Drink:** People eat hearty, simple meals: venison, beef, horker meat, salmon, leeks, cabbages, potatoes, apples, sweetrolls, and wheels of Eidar or goat cheese. Common drinks are **Nord mead** (Honningbrew from Whiterun or Black-Briar from Riften), ale, Alto wine, and milk. Water is rarely mentioned in taverns.
+- **Taverns & Social Life:** The local inn is the heart of every town and village. People gather by the hearth at night for warm food, mead, gossip, and songs from traveling bards (like *Ragnar the Red* or *The Dragonborn Comes*).
+- **Money & Economy:** Currency is **gold septims** (often just called "gold" or "coin"). A loaf of bread or a mug of ale costs a few septims; a horse costs 1,000. Most rural folk trade in lumber, pelts, ore, crops, and wool. Khajiit caravans are known for exotic goods—and suspected of smuggling **skooma** and **moon sugar**, illegal narcotics that ruin lives.
+- **Law & Justice:** Each Hold has its own Jarl, steward, housecarl, and city guards. Crimes are punished with fines (bounties), jail time, or execution. Guards handle local trouble; mercenaries (like the **Companions** in Whiterun) are hired for monster or bandit contracts.
+- **Health & Magic:** Most people rely on herbal poultices, healing potions, or temple priests for wounds and diseases like **ataxia**, **rockjoint**, or **brain rot**. Restoration magic is respected, while Destruction, Conjuration, and Illusion are viewed with deep suspicion by ordinary Nords.
+- **Superstitions & Common Sayings:**
+  - *Phrases:* "By the Eight," "Shor's bones," "Talos guide you" (whispered), "May your road lead you to warm sands" (Khajiit), "Milk-drinker" (an insult meaning weak or cowardly).
+  - *Superstitions:* Ruined Nordic barrows are haunted by **draugr** (undead) and should never be disturbed. Hags, witches, and Hagravens practice dark blood magic in the wilds. Giants keep to themselves with their mammoths unless provoked—and will launch a man into the sky if angered.
+- **Calendar & Seasons:** Days and months follow the Tamrielic calendar (Sundas through Loredas; Morning Star, Sun's Dawn, First Seed, Rain's Hand, Second Seed, Midyear, Sun's Height, Last Seed, Hearthfire, Frostfall, Sun's Dusk, Evening Star). The game begins in **Last Seed** (late summer/early autumn). Nights are freezing, snow is constant in the north, and travelers stay off the roads after dark.
